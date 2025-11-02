@@ -5,12 +5,12 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Run {
-  id         String   @id @db.VarChar(191)
+  id         String   @id
   query      String
   createdBy  String
   status     String
@@ -27,18 +27,18 @@ model Call {
   runId            String   @db.VarChar(191)
   run              Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  leadId           String   @db.VarChar(191)
+  leadId           String
   leadName         String
-  leadPhone        String   @db.VarChar(64)
-  leadSource       String?  @db.VarChar(191)
+  leadPhone        String
+  leadSource       String?
   leadRating       Float?
   leadReviewCount  Int?
   leadDescription  String?
   leadConfidence   Float?
-  leadUrl          String?  @db.VarChar(512)
+  leadUrl          String?
 
-  state            String   @db.VarChar(64)
-  sentiment        String?  @db.VarChar(64)
+  state            String
+  sentiment        String?
   startedAt        DateTime?
   endedAt          DateTime?
   durationSeconds  Int?
@@ -54,10 +54,10 @@ model Call {
 
 model TranscriptTurn {
   id        String   @id @db.VarChar(191)
-  callId    String   @db.VarChar(191)
+  callId    String
   call      Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
 
-  speaker   String   @db.VarChar(32)
+  speaker   String
   text      String
   timestamp DateTime @default(now())
   t0Ms      Int?
