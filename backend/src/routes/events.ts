@@ -48,7 +48,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
         console.error('[events] failed to poll run', error);
       } finally {
         if (active) {
-          setTimeout(poll, 3000);
+          setTimeout(poll, 1000);
         }
       }
     };

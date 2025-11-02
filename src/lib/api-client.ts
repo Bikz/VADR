@@ -14,6 +14,16 @@ import {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
+function toWebsocketUrl(baseUrl: string): string {
+  if (baseUrl.startsWith('https://')) {
+    return baseUrl.replace('https://', 'wss://');
+  }
+  if (baseUrl.startsWith('http://')) {
+    return baseUrl.replace('http://', 'ws://');
+  }
+  return baseUrl;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
@@ -104,6 +114,18 @@ export const apiClient = {
     }
 
     return new EventSource(url.toString());
+  },
+
+  createWebSocket(path: string, params?: Record<string, string>): WebSocket {
+    const wsBase = toWebsocketUrl(BACKEND_URL);
+    const url = new URL(`${wsBase}${path}`);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.append(key, value);
+      });
+    }
+
+    return new WebSocket(url.toString());
   },
 
   parseEvent(data: string): CallEvent | null {

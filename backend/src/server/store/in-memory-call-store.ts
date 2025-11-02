@@ -60,6 +60,7 @@ export class InMemoryCallStore implements CallStore {
       });
     });
 
+    this.recalculateRunStatus(runId);
     return session;
   }
 
@@ -69,6 +70,7 @@ export class InMemoryCallStore implements CallStore {
 
     session.twilioCallSid = callSid;
     this.callSidToId.set(callSid, callId);
+    this.recalculateRunStatus(session.runId);
   }
 
   async findCallBySid(callSid: string): Promise<CallSession | undefined> {
@@ -117,6 +119,8 @@ export class InMemoryCallStore implements CallStore {
       role: turn.speaker === 'ai' ? 'assistant' : 'user',
       content: turn.text,
     });
+
+    this.recalculateRunStatus(session.runId);
   }
 
   async getRun(runId: string): Promise<RunSession | undefined> {
@@ -140,6 +144,7 @@ export class InMemoryCallStore implements CallStore {
     if (!session) return;
 
     session.call.isListening = isListening;
+    this.recalculateRunStatus(session.runId);
   }
 
   async setTakeOver(callId: string, isTakenOver: boolean): Promise<void> {
@@ -147,6 +152,7 @@ export class InMemoryCallStore implements CallStore {
     if (!session) return;
 
     session.call.isTakenOver = isTakenOver;
+    this.recalculateRunStatus(session.runId);
   }
 
   private recalculateRunStatus(runId: string) {
@@ -159,12 +165,11 @@ export class InMemoryCallStore implements CallStore {
 
     if (callSessions.length === 0) return;
 
+    runSession.run.calls = callSessions.map((call) => ({ ...call }));
+
     const allTerminal = callSessions.every((call) => TERMINAL_STATES.includes(call.state));
     const nextStatus = allTerminal ? 'completed' : 'calling';
 
-    if (runSession.run.status !== nextStatus) {
-      runSession.run.status = nextStatus;
-      runSession.run.calls = callSessions;
-    }
+    runSession.run.status = nextStatus;
   }
 }

@@ -1,10 +1,12 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { twilioRoutes } from './routes/twilio.js';
 import { callRoutes } from './routes/calls.js';
 import { searchRoutes } from './routes/search.js';
 import { eventRoutes } from './routes/events.js';
+import { audioRoutes } from './routes/audio.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -131,6 +133,8 @@ fastify.addHook('onRequest', async (request, reply) => {
   }
 });
 
+await fastify.register(websocket);
+
 // Health check
 fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
@@ -163,6 +167,7 @@ await fastify.register(twilioRoutes, { prefix: '/api/twilio' });
 await fastify.register(callRoutes, { prefix: '/api' });
 await fastify.register(searchRoutes, { prefix: '/api' });
 await fastify.register(eventRoutes, { prefix: '/api' });
+await fastify.register(audioRoutes, { prefix: '/api' });
 
 // Start server
 try {

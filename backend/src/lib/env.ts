@@ -44,14 +44,33 @@ export function assertEnv() {
   }
 }
 
+function normalizeBaseUrl(url: string | undefined | null) {
+  if (!url) return undefined;
+
+  const trimmed = url.trim();
+  if (!trimmed) return undefined;
+
+  const withProtocol = /^(https?:)?\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/$/, '');
+}
+
 export function resolvePublicBaseUrl() {
-  const explicit = env.publicBaseUrl();
-  if (explicit) return explicit.replace(/\/$/, '');
+  const explicit = normalizeBaseUrl(env.publicBaseUrl());
+  if (explicit) return explicit;
 
-  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL.replace(/\/$/, '')}`;
-  }
+  const railwayPublicDomain = normalizeBaseUrl(process.env.RAILWAY_PUBLIC_DOMAIN);
+  if (railwayPublicDomain) return railwayPublicDomain;
 
-  return 'http://localhost:3000';
+  const railwayStaticUrl = normalizeBaseUrl(process.env.RAILWAY_STATIC_URL);
+  if (railwayStaticUrl) return railwayStaticUrl;
+
+  const railwayUrl = normalizeBaseUrl(process.env.RAILWAY_URL);
+  if (railwayUrl) return railwayUrl;
+
+  const vercelUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_VERCEL_URL);
+  if (vercelUrl) return vercelUrl;
+
+  const fallbackPort = Number.parseInt(process.env.PORT ?? '', 10) || 3001;
+  return `http://localhost:${fallbackPort}`;
 }
 
