@@ -47,6 +47,11 @@ User Query → Web Search → Find Phone Numbers → 6 Parallel Calls → Live T
 # Install dependencies
 bun install
 
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local and add your Metorial API key:
+# METORIAL_API_KEY=your-metorial-api-key-here
+
 # Run development server
 bun run dev
 
@@ -65,78 +70,19 @@ bun run build
 
 Visit `http://localhost:3000` and try an example query!
 
-## 🔧 Telephony Setup (Track 1)
+### Environment Variables
 
-1. Install the new dependencies (Twilio + OpenAI SDKs):
+Create a `.env.local` file in the root directory with:
 
-   ```bash
-   bun install
-   ```
+```env
+METORIAL_API_KEY=your-metorial-api-key-here
+```
 
-2. Create a `.env.local` and provide the required credentials:
+Get your Metorial API key from: https://metorial.com/
 
-   ```bash
-   # Twilio / LLM
-   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   TWILIO_AUTH_TOKEN=your_auth_token
-   TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
-   OPENAI_API_KEY=sk-...
-   PUBLIC_BASE_URL=https://your-ngrok-or-production-host
-   VOICE_AGENT_MODEL=gpt-4o-mini
-   TWILIO_VOICE_NAME=Polly.Joanna
+**Note**: This project uses Exa (neural web search) via Metorial's MCP platform. Metorial provides an integration layer that connects to Exa and other search services.
 
-   # PlanetScale / Neon connection string
-   DATABASE_URL=postgresql://username:password@host/dbname?sslmode=require
-
-   # Deepgram (real-time STT)
-   DEEPGRAM_API_KEY=dg-xxxxxxxxxxxxxxxxxxxxxxxx
-
-   # Observability
-   SENTRY_DSN=https://xxxxx.ingest.sentry.io/yyyyy
-   SENTRY_TRACES_SAMPLE_RATE=0.1
-   ```
-
-   `PUBLIC_BASE_URL` must be reachable by Twilio (use Ngrok during local development).
-
-3. Give the outbound number call permissions in the Twilio console (Voice > Settings > Geo Permissions) and verify the caller ID if you are using Trial credentials.
-
-4. Start the dev server: `bun run dev` and expose it via Ngrok so Twilio can reach the `/api/twilio/*` webhooks.
-
-5. Initiate a run from the UI. The dashboard now:
-
-   - Calls `/api/start-calls` which spins up real Twilio outbound calls into a gather-loop powered by GPT + Twilio TTS.
-   - Streams call state + transcripts over Server-Sent Events (`/api/events?runId=...`) so tiles update in near-real time.
-   - Sends transcript turns to the LLM, generates agent replies, and plays them back with Twilio’s `<Gather>` loop.
-
-6. Use the “Listen” and “Take Over” toggles to flag intent to monitor/join. (The UI marks takeover intent; the Twilio Voice Client bridge lands in the next phase.)
-
-### Service architecture
-
-- **CallService (`src/server/services/call-service.ts`)** owns Twilio orchestration, LLM turns, state transitions, and persistence hooks.
-- **CallStore (`src/server/store`)** runs entirely on Prisma/Neon; local dev works without a database connection, but production should set `DATABASE_URL`.
-- **PlanetScale (via Prisma)** stores runs, calls, transcript turns, and metrics (`prisma/schema.prisma`).
-- Next.js API routes (`/api/start-calls`, `/api/twilio/*`, `/api/events`, `/api/calls/[id]`) remain thin adapters so migrating to a dedicated backend later is straightforward.
-- **Sentry (`sentry.*.config.ts`)** captures frontend & backend errors when the DSN is configured.
-
-### Manual test flow
-
-1. Add your mobile number as one of the mock leads so you can answer.
-2. Run `bun run dev`, tunnel with Ngrok, and update `PUBLIC_BASE_URL` to the tunnel URL.
-3. From the dashboard, run a query, keep the default leads selected, and click “Go”.
-4. When you answer the call, speak a few short phrases. Watch the transcript panel update per turn.
-5. Confirm the agent replies using Twilio TTS and the tile state transitions to `completed` when you hang up.
-
-### Pre-deploy checks
-
-- `bun run verify` runs type-checking, lint, and a production build locally so you can catch the same errors Vercel will surface before pushing.
-- If you only need the quick validations, `bun run lint` mirrors the checks Next.js performs during `next build`.
-
-### Remaining TODOs / Next steps
-
-- **Phase 2:** Switch from the `<Gather>` loop to full-duplex Twilio Media Streams + Deepgram for word-by-word transcripts.
-- **Phase 3:** Wire the “Take Over” control into a Twilio Voice Client/WebRTC participant so the operator can actually barge in.
-- **Phase 4:** Add COVAL evaluation harness + automated reporting.
-- Integrate Clerk for auth and Natural for payments when user-facing rollout is ready.
+**Important**: You must configure your Exa API key in your Metorial deployment settings. Go to your Metorial dashboard, find the Exa deployment (ID: `svd_0mhhcb7z0wvg34K6xJugat`), and add your Exa API key there. The Exa API key cannot be passed via environment variables - it must be configured in the Metorial deployment.
 
 ## 📋 Example Queries
 
