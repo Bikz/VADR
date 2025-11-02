@@ -1,15 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, Volume2, Hand, Play } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2, Hand, Play, Sparkles } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Call } from '@/types';
 import { getStateColor, getSentimentColor } from '@/lib/call-style';
-import { Waveform } from './waveform';
+import dynamic from 'next/dynamic';
 import { useCallAudio } from '@/hooks/use-call-audio';
+import { useRouter } from 'next/navigation';
+
+const AnimatedCallIcon = dynamic(() => import('./animated-call-icon').then(mod => ({ default: mod.AnimatedCallIcon })), {
+  ssr: false,
+});
 
 interface CallTileProps {
   call: Call;
@@ -23,6 +28,7 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
   const [duration, setDuration] = useState(call.duration ?? 0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     setDuration(call.duration ?? 0);
@@ -78,7 +84,7 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`border-b border-gray-200 bg-white ${headerSpacing}`}>
+      <div className={`${call.state !== 'connected' ? 'border-b border-gray-200' : ''} bg-white ${headerSpacing}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className={`truncate font-semibold text-gray-900 ${compact ? 'text-sm' : 'text-base'}`}>
@@ -86,12 +92,14 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
             </h3>
             <p className="font-mono text-[0.7rem] text-gray-500">{call.lead.phone}</p>
           </div>
-          <Badge
-            variant="outline"
-            className={`${getStateColor(call.state)} shrink-0 text-[0.6rem] uppercase tracking-[0.25em]`}
-          >
-            {call.state}
-          </Badge>
+          {call.state !== 'connected' && (
+            <Badge
+              variant="outline"
+              className={`${getStateColor(call.state)} shrink-0 text-[0.6rem] uppercase tracking-[0.25em]`}
+            >
+              {call.state}
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -116,12 +124,17 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
           </Badge>
         </div>
 
-        {(call.state === 'connected' || call.state === 'ringing') && (
-          <Waveform
-            isActive={call.state === 'connected'}
-            isTakenOver={call.isTakenOver}
-            compact={compact}
-          />
+        {call.state === 'connected' && (
+          <div className="flex items-center justify-center py-2">
+            <AnimatedCallIcon 
+              size={compact ? 48 : 64}
+              iconColor="#82EE71"
+              waveColor="#82EE71"
+            />
+          </div>
+        )}
+        {call.state === 'ringing' && (
+          <div className="h-8" />
         )}
       </div>
 
@@ -144,7 +157,7 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
                     turn.speaker === 'ai' ? 'text-gray-900' : 'text-gray-500'
                   }`}
                 >
-                  {turn.speaker === 'ai' ? 'VADR' : call.lead.name.split(' ')[0]}
+                  {turn.speaker === 'ai' ? 'TARA' : call.lead.name.split(' ')[0]}
                 </span>
               </div>
               <p className={`rounded-lg border border-gray-200 bg-gray-50 text-gray-700 ${transcriptText}`}>
@@ -252,7 +265,17 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
           )}
 
           {(call.state === 'completed' || call.state === 'voicemail' || call.state === 'failed') && (
-            <p className="flex-1 text-center text-xs text-gray-500">Call ended</p>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push('/summaries')}
+                className="flex-1 h-8 text-xs border-gray-300 text-gray-600 hover:border-gray-400"
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Summaries
+              </Button>
+            </>
           )}
         </div>
       </div>

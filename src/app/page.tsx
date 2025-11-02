@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Sparkles, Search, Plus, ArrowUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
@@ -48,25 +49,36 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
       nextSteps: [
         'Adjust the prompt with more specific requirements.',
         'Expand the acceptable budget or distance.',
-        'Run VADR again to gather a new list of leads.',
+        'Run TARA again to gather a new list of leads.'
       ],
     };
   }
+
+  // Analyze query for keywords
+  const hasPriceConstraint = /\$\d+|under \$|below \$|budget|price|cost|affordable|cheap/i.test(query);
+  const hasTimeConstraint = /today|tomorrow|same.?day|available (today|now)|immediate|asap/i.test(query);
+  const hasLocationConstraint = /near me|close|distance|walking distance|local/i.test(query);
+  const hasRatingConstraint = /\d+\+ stars|\d+\+ rating|rated|reviews|best|top/i.test(query);
+  const hasBookingConstraint = /walk.?in|walkin|appointment|booking|reservation|book/i.test(query);
 
   const completed = calls.filter(call => call.state === 'completed');
   const voicemail = calls.filter(call => call.state === 'voicemail');
   const failed = calls.filter(call => call.state === 'failed');
   const avgRating = calls.reduce((acc, call) => acc + (call.lead.rating ?? 0), 0) / calls.length;
 
+  // Find best call considering multiple factors
   const bestCall = [...completed]
     .sort((a, b) => {
       if (b.lead.rating !== a.lead.rating) return b.lead.rating - a.lead.rating;
       if ((a.lead as any).distance != null && (b.lead as any).distance != null) {
         return (a.lead as any).distance - (b.lead as any).distance;
       }
+      if (a.sentiment === 'positive' && b.sentiment !== 'positive') return -1;
+      if (b.sentiment === 'positive' && a.sentiment !== 'positive') return 1;
       return 0;
     })[0] ?? [...calls].sort((a, b) => b.lead.rating - a.lead.rating)[0];
 
+  // Generate highlights
   const highlights: string[] = [];
   highlights.push(
     `Connected with ${completed.length} of ${calls.length} businesses for "${query}" (${voicemail.length} voicemail, ${failed.length} unavailable).`
@@ -80,28 +92,114 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
     highlights.push(
       `${bestCall.lead.name} stood out with a ${bestCall.lead.rating.toFixed(1)}/5 rating on ${bestCall.lead.source}.`
     );
+    
+    if (bestCall.sentiment === 'positive') {
+      highlights.push(`The conversation with ${bestCall.lead.name} had a positive sentiment.`);
+    }
+    
+    if (bestCall.extractedData?.price) {
+      highlights.push(`Pricing information gathered: ${bestCall.lead.name} quoted ${bestCall.extractedData.price}.`);
+    }
+    
+    if (bestCall.extractedData?.availability) {
+      highlights.push(`Availability confirmed: ${bestCall.lead.name} has ${bestCall.extractedData.availability}.`);
+    }
+    
+    if ((bestCall.lead as any).distance != null) {
+      highlights.push(`${bestCall.lead.name} is ${(bestCall.lead as any).distance.toFixed(1)} miles away.`);
+    }
   }
 
-  const recommendation = bestCall
-    ? `Recommend following up with ${bestCall.lead.name} at ${bestCall.lead.phone}. They were rated ${bestCall.lead.rating.toFixed(1)}/5, and the call sentiment was ${bestCall.sentiment}. Their team noted: ${bestCall.lead.description}`
-    : 'Recommend refining the search criteria and running VADR again; no strong matches surfaced in this round.';
+  // Generate contextual recommendations
+  const recommendations: string[] = [];
+  
+  if (bestCall) {
+    recommendations.push(
+      `Recommend following up with ${bestCall.lead.name} at ${bestCall.lead.phone}. They were rated ${bestCall.lead.rating.toFixed(1)}/5, and the call sentiment was ${bestCall.sentiment}.`
+    );
+    
+    if (bestCall.extractedData?.price) {
+      recommendations.push(`Pricing: ${bestCall.extractedData.price} - confirm if this fits your budget.`);
+    }
+    
+    if (bestCall.extractedData?.availability) {
+      recommendations.push(`Availability: ${bestCall.extractedData.availability} - verify timing works for your schedule.`);
+    }
+    
+    if (hasLocationConstraint && (bestCall.lead as any).distance != null) {
+      recommendations.push(`Location: ${(bestCall.lead as any).distance.toFixed(1)} miles away - convenient for your needs.`);
+    }
+    
+    if (bestCall.sentiment === 'positive') {
+      recommendations.push(`The positive conversation indicates good rapport - prioritize this lead.`);
+    }
+  } else {
+    recommendations.push('Recommend refining the search criteria and running TARA again; no strong matches surfaced in this round.');
+  }
 
-  const nextSteps = bestCall
-    ? [
-        `Call ${bestCall.lead.name} directly to confirm availability, pricing, and next steps.`,
-        'Review the transcripts to capture any follow-up questions or details.',
-        'Run another VADR search if you need backup options or broader coverage.',
-      ]
-    : [
-        'Adjust the search prompt with more specific qualifiers (price, time, location).',
-        'Consider broadening the acceptable distance or service scope.',
-        'Launch another VADR search once the criteria are refined.',
-      ];
+  // Generate contextual next steps
+  const nextSteps: string[] = [];
+  
+  if (bestCall) {
+    nextSteps.push(`Call ${bestCall.lead.name} directly at ${bestCall.lead.phone} to confirm availability, pricing, and next steps.`);
+    
+    if (bestCall.extractedData) {
+      nextSteps.push('Review the extracted data in the transcripts to confirm all details match your requirements.');
+    } else {
+      nextSteps.push('Review the call transcripts to capture any follow-up questions or details discussed.');
+    }
+    
+    if (hasTimeConstraint) {
+      nextSteps.push('Since you need immediate availability, follow up promptly to secure your preferred time slot.');
+    }
+    
+    if (hasPriceConstraint) {
+      nextSteps.push('Compare the pricing information with your budget to ensure it aligns with your expectations.');
+    }
+    
+    if (hasBookingConstraint) {
+      nextSteps.push('Book your appointment or reservation as soon as possible, especially if walk-ins were mentioned.');
+    }
+    
+    if (voicemail.length > 0) {
+      nextSteps.push(`Check back with the ${voicemail.length} business${voicemail.length > 1 ? 'es' : ''} that left voicemail messages - they may have responded.`);
+    }
+    
+    if (completed.length > 1) {
+      nextSteps.push('Compare options between the successful calls to make your final decision.');
+    }
+    
+    nextSteps.push('Run another TARA search if you need backup options or broader coverage.');
+  } else {
+    if (hasPriceConstraint) {
+      nextSteps.push('Consider adjusting your budget range - try expanding or being more flexible on price.');
+    }
+    
+    if (hasTimeConstraint) {
+      nextSteps.push('Try expanding your time window - same-day availability can be limited.');
+    }
+    
+    if (hasLocationConstraint) {
+      nextSteps.push('Broaden your search radius - you may need to travel slightly farther for the best options.');
+    }
+    
+    if (hasRatingConstraint) {
+      nextSteps.push('Consider slightly lower-rated businesses that might still meet your needs.');
+    }
+    
+    nextSteps.push('Adjust the search prompt with more specific qualifiers (price, time, location).');
+    nextSteps.push('Launch another TARA search once the criteria are refined.');
+  }
 
-  return { highlights, recommendation, nextSteps };
+  return { 
+    highlights, 
+    recommendation: recommendations.join(' ') || 'Review the results and proceed with the best match.',
+    nextSteps 
+  };
 }
 
 export default function Home() {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>('search');
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<Lead[]>([]);
@@ -114,7 +212,6 @@ export default function Home() {
   const [locationName, setLocationName] = useState<string>('');
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<GeolocationPermissionState | 'unknown'>('unknown');
 
@@ -265,7 +362,17 @@ export default function Home() {
       setStage('review');
     } catch (error) {
       console.error('Search error:', error);
-      setSearchError(error instanceof Error ? error.message : 'Failed to search for businesses. Please try again.');
+      let errorMessage = 'Failed to search for businesses. Please try again.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Provide more helpful error messages
+        if (error.message.includes('Failed to connect') || error.message.includes('fetch')) {
+          errorMessage = 'Cannot connect to backend server. Make sure the backend is running on port 3004 (or check NEXT_PUBLIC_BACKEND_URL).';
+        } else if (error.message.includes('Google Places API key')) {
+          errorMessage = 'Backend configuration error: Google Places API key is missing or invalid.';
+        }
+      }
+      setSearchError(errorMessage);
       setIsSearching(false);
     }
   };
@@ -287,30 +394,10 @@ export default function Home() {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
-    setIsLaunching(true);
-    setLaunchError(null);
-
-    try {
-      const response = await apiClient.startCallRun({
-        query,
-        leads: selectedLeads,
-        prep: buildCallPrep(query, selectedLeads),
-        createdBy: 'demo-user',
-      });
-
-      const normalizedRun: VADRRun = {
-        ...response.run,
-        id: response.run.id ?? response.runId,
-      };
-
-      setCurrentRun(normalizedRun);
-      setStage('calling');
-    } catch (error) {
-      console.error('Failed to launch calls', error);
-      setLaunchError(error instanceof Error ? error.message : 'Failed to launch calls. Please try again.');
-    } finally {
-      setIsLaunching(false);
-    }
+    // For now, just forward to the call page with the selected businesses
+    const businessesJson = encodeURIComponent(JSON.stringify(selectedLeads));
+    const queryParam = encodeURIComponent(query);
+    router.push(`/calls?businesses=${businessesJson}&query=${queryParam}`);
   };
 
   const handleRunUpdate = (updatedRun: VADRRun) => {
@@ -347,7 +434,10 @@ export default function Home() {
     <div className="min-h-screen bg-[#F4E4CB] flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-4xl flex flex-col items-center gap-12">
         {/* Logo and Brand */}
-        <div className="flex items-center gap-4">
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity"
+        >
           <div className="relative w-[74px] h-[74px]">
             <svg width="74" height="74" viewBox="0 0 74 74" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="37" cy="37" r="37" fill="#D4A574"/>
@@ -358,7 +448,7 @@ export default function Home() {
           <h1 className="text-[82px] font-normal tracking-[-3.27px] leading-none text-[#523429]" style={{ fontFamily: 'Kodchasan, Inter, -apple-system, sans-serif' }}>
             TARA
           </h1>
-        </div>
+        </button>
 
         <h2 className="text-[50px] font-medium tracking-[-2px] leading-none text-[#513529]">
           How can I help?
@@ -477,7 +567,10 @@ export default function Home() {
 
   const renderReviewStage = () => (
     <div className="min-h-screen bg-[#F4E4CB] px-14 py-8">
-      <div className="mb-16 flex items-center gap-3">
+      <button
+        onClick={handleReset}
+        className="mb-16 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+      >
         <div className="relative h-[22px] w-[22px] flex-shrink-0">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="11" cy="11" r="11" fill="#D4A574"/>
@@ -488,7 +581,7 @@ export default function Home() {
         <h1 className="font-kodchasan text-[25px] font-normal tracking-[-0.991px] leading-none text-[#523429]">
           TARA
         </h1>
-      </div>
+      </button>
 
       <div className="mb-14">
         <p className="mb-2 font-inter text-[30px] font-medium tracking-[-1.2px] leading-normal text-[#513529]/50">
@@ -565,10 +658,10 @@ export default function Home() {
           </Button>
           <Button
             onClick={handleStartCalls}
-            disabled={!selectedCount || isLaunching}
+            disabled={!selectedCount}
             className="rounded-full bg-[#523429] px-8 py-3 font-inter text-base font-semibold text-white hover:bg-[#523429]/90 disabled:cursor-not-allowed disabled:bg-[#523429]/30"
           >
-            {isLaunching ? 'Launching calls…' : `Start ${selectedCount} calls`}
+            {`Start ${selectedCount} calls`}
           </Button>
         </div>
       </div>
@@ -607,7 +700,7 @@ export default function Home() {
             </div>
             <h2 className="text-3xl font-semibold text-gray-900">Summary for "{currentRun.query}"</h2>
             <p className="text-sm text-gray-500">
-              VADR completed {currentRun.calls.length} calls and synthesized the key takeaways for you.
+              TARA completed {currentRun.calls.length} calls and synthesized the key takeaways for you.
             </p>
           </div>
 
@@ -661,6 +754,14 @@ export default function Home() {
     <div className={`flex min-h-screen flex-col ${stage === 'search' || stage === 'review' ? 'bg-[#F4E4CB]' : 'bg-white'} text-gray-900`}>
       {stage !== 'search' && stage !== 'review' && (
         <header className="flex items-center justify-end gap-3 px-6 py-4 text-sm text-gray-600">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/calls')}
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            Dev: Call Page
+          </Button>
           {stage === 'calling' && (
             <Button
               variant="outline"
@@ -683,6 +784,18 @@ export default function Home() {
           )}
         </header>
       )}
+      
+      {/* Dev button - always visible */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push('/calls')}
+          className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 shadow-md"
+        >
+          Dev: Call Page
+        </Button>
+      </div>
 
       <main className="flex-1">
         {stage === 'search' && renderSearchStage()}

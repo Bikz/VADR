@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Mic, Plus, ArrowUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 
 const SUGGESTION_PROMPTS = [
@@ -12,6 +13,7 @@ const SUGGESTION_PROMPTS = [
 ];
 
 export default function SearchPage() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
 
   const handleSearch = (searchQuery: string) => {
@@ -25,7 +27,10 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen bg-[#F4E4CB] flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-4xl flex flex-col items-center gap-12">
-        <div className="flex items-center gap-4">
+        <button
+          onClick={() => router.push('/')}
+          className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity"
+        >
           <div className="relative w-[74px] h-[74px]">
             <svg width="74" height="74" viewBox="0 0 74 74" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="37" cy="37" r="37" fill="#D4A574"/>
@@ -36,7 +41,7 @@ export default function SearchPage() {
           <h1 className="text-[82px] font-normal tracking-[-3.27px] leading-none text-[#523429]" style={{ fontFamily: 'Kodchasan, Inter, -apple-system, sans-serif' }}>
             TARA
           </h1>
-        </div>
+        </button>
 
         <h2 className="text-[50px] font-medium tracking-[-2px] leading-none text-[#513529]">
           How can I help?

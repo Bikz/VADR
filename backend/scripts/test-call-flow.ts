@@ -7,7 +7,7 @@
 
 import type { CallPrep, Lead } from '../src/types';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = process.env.BACKEND_URL || 'http://localhost:3004';
 
 // Test data
 const testLead: Lead = {

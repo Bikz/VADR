@@ -77,11 +77,17 @@ async function searchGooglePlaces(
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Google Places API error:', response.status, errorText);
+      // Log but don't throw - return empty array so other strategies can try
       return [];
     }
 
     const data = await response.json() as any;
     const places = data.places || [];
+    
+    if (!Array.isArray(places)) {
+      console.error('Google Places API returned unexpected format:', JSON.stringify(data).substring(0, 500));
+      return [];
+    }
 
     const leads: Lead[] = places
       .filter((place: any) => {
@@ -379,7 +385,17 @@ export async function searchRoutes(fastify: FastifyInstance) {
       }
 
       if (!GOOGLE_PLACES_API_KEY) {
+        console.error('Google Places API key is missing');
         return reply.code(500).send({ error: 'Google Places API key is not configured' });
+      }
+      
+      // Log API key status (first 10 chars only for security)
+      const apiKeyPreview = GOOGLE_PLACES_API_KEY.substring(0, 10) + '...';
+      console.log(`Using Google Places API key: ${apiKeyPreview}`);
+      
+      const metorialApiKey = process.env.METORIAL_API_KEY;
+      if (!metorialApiKey) {
+        console.warn('METORIAL_API_KEY is not configured - Exa search will fail');
       }
 
       // Clean query
@@ -391,12 +407,26 @@ export async function searchRoutes(fastify: FastifyInstance) {
       console.log(`Searching for "${cleanedQuery}" near ${latitude}, ${longitude}`);
 
       // Strategy 1: Direct Google Places search (primary)
-      const directResults = await searchGooglePlaces(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
-      console.log(`Direct Google Places found ${directResults.length} businesses`);
+      let directResults: Lead[] = [];
+      let directError: string | null = null;
+      try {
+        directResults = await searchGooglePlaces(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
+        console.log(`Direct Google Places found ${directResults.length} businesses`);
+      } catch (error) {
+        directError = error instanceof Error ? error.message : String(error);
+        console.error('Direct Google Places search failed:', directError);
+      }
 
       // Strategy 2: Use Exa to discover businesses, then enrich with Google Places (backup/enhancement)
-      const exaResults = await searchWithExaAndEnrich(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
-      console.log(`Exa + Google Places found ${exaResults.length} businesses`);
+      let exaResults: Lead[] = [];
+      let exaError: string | null = null;
+      try {
+        exaResults = await searchWithExaAndEnrich(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
+        console.log(`Exa + Google Places found ${exaResults.length} businesses`);
+      } catch (error) {
+        exaError = error instanceof Error ? error.message : String(error);
+        console.error('Exa search failed:', exaError);
+      }
 
       // Combine and deduplicate by phone number, then sort by distance
       const allLeads: Lead[] = [...directResults, ...exaResults];
@@ -428,6 +458,18 @@ export async function searchRoutes(fastify: FastifyInstance) {
         .slice(0, 10);
 
       console.log(`Returning ${uniqueLeads.length} unique businesses`);
+
+      // If no results and there were errors, include them in response for debugging
+      if (uniqueLeads.length === 0) {
+        const errors: string[] = [];
+        if (directError) errors.push(`Direct search: ${directError}`);
+        if (exaError) errors.push(`Exa search: ${exaError}`);
+        if (errors.length > 0) {
+          console.warn('Search returned no results. Errors:', errors);
+        } else {
+          console.warn('Search returned no results. Both strategies completed but found no businesses.');
+        }
+      }
 
       const parsed = leadSchema.array().parse(uniqueLeads);
       return reply.send(parsed);

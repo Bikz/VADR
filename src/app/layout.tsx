@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`font-sans ${inter.variable} ${kodchasan.variable}`}>
+    <html lang="en" className={`font-sans ${inter.variable} ${kodchasan.variable}`} suppressHydrationWarning>
       <head>
         <Script
           crossOrigin="anonymous"
