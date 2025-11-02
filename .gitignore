@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 CLAUDE.md
 packages/shared/dist
+
+# Deployment files with secrets
+DEPLOYMENT-SETUP.md

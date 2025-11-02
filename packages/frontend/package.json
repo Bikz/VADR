@@ -1,0 +1,46 @@
+{
+  "name": "nextjs-shadcn",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 --turbopack",
+    "build:shared": "bun run --cwd ../shared build",
+    "build": "bun run build:shared && next build",
+    "start": "next start",
+    "lint": "bunx tsc --noEmit && next lint",
+    "verify": "NEXT_DISABLE_FONT_DOWNLOADS=1 bun run lint && NEXT_DISABLE_FONT_DOWNLOADS=1 bun run build",
+    "format": "bunx biome format --write"
+  },
+  "dependencies": {
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@sentry/core": "^8.55.0",
+    "@sentry/nextjs": "^8.55.0",
+    "@vadr/shared": "workspace:*",
+    "@vercel/analytics": "^1.5.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "^15.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "same-runtime": "^0.0.1",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/node": "^20.17.50",
+    "@types/react": "^18.3.22",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^9.27.0",
+    "eslint-config-next": "15.1.7",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3"
+  }
+}
