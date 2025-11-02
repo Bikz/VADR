@@ -14,7 +14,7 @@ interface UpdateCallRequest {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const { callId } = await context.params;
   const payload = (await request.json()) as UpdateCallRequest;
-  const callSession = callService.getCall(callId);
+  const callSession = await callService.getCall(callId);
 
   if (!callSession) {
     return NextResponse.json({ error: 'Unknown call' }, { status: 404 });
@@ -32,5 +32,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     await callService.endCall(callId);
   }
 
-  return NextResponse.json({ call: callService.getCall(callId)?.call });
+  const updated = await callService.getCall(callId);
+  return NextResponse.json({ call: updated?.call });
 }

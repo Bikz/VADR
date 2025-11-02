@@ -53,6 +53,12 @@ bun run dev
 # Pre-deploy sanity check (typecheck + lint + production build)
 bun run verify
 
+# Generate Prisma client after schema changes
+bun run prisma:generate
+
+# Push schema to PlanetScale/Neon when connected
+bun run prisma:push
+
 # Build for production
 bun run build
 ```
@@ -70,14 +76,28 @@ Visit `http://localhost:3000` and try an example query!
 2. Create a `.env.local` and provide the required credentials:
 
    ```bash
+   # Twilio / LLM
    TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    TWILIO_AUTH_TOKEN=your_auth_token
    TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
    OPENAI_API_KEY=sk-...
    PUBLIC_BASE_URL=https://your-ngrok-or-production-host
-   # Optional overrides
    VOICE_AGENT_MODEL=gpt-4o-mini
    TWILIO_VOICE_NAME=Polly.Joanna
+
+   # Upstash Redis (shared call state)
+   UPSTASH_REDIS_REST_URL=https://us1-shiny-redis.upstash.io
+   UPSTASH_REDIS_REST_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
+
+   # PlanetScale / Neon connection string
+   DATABASE_URL=mysql://username:password@host/dbname
+
+   # Deepgram (real-time STT)
+   DEEPGRAM_API_KEY=dg-xxxxxxxxxxxxxxxxxxxxxxxx
+
+   # Observability
+   SENTRY_DSN=https://xxxxx.ingest.sentry.io/yyyyy
+   SENTRY_TRACES_SAMPLE_RATE=0.1
    ```
 
    `PUBLIC_BASE_URL` must be reachable by Twilio (use Ngrok during local development).
@@ -92,13 +112,15 @@ Visit `http://localhost:3000` and try an example query!
    - Streams call state + transcripts over Server-Sent Events (`/api/events?runId=...`) so tiles update in near-real time.
    - Sends transcript turns to the LLM, generates agent replies, and plays them back with Twilio’s `<Gather>` loop.
 
-6. Use the “Listen” and “Take Over” toggles to flag intent to monitor/join. (The UI state syncs server-side; injecting the user audio leg via Twilio Client is queued in TODOs below.)
+6. Use the “Listen” and “Take Over” toggles to flag intent to monitor/join. (The UI marks takeover intent; the Twilio Voice Client bridge lands in the next phase.)
 
 ### Service architecture
 
-- **CallService (`src/server/services/call-service.ts`)** owns Twilio orchestration, LLM turns, and state transitions.
-- **CallStore (`src/server/store`)** currently uses an in-memory implementation; swap in Redis/Postgres later without touching the routes.
-- Next.js API routes (`/api/start-calls`, `/api/twilio/*`, `/api/events`, `/api/calls/[id]`) now just delegate to the service layer so migrating to Fastify or workers is a matter of reusing the same modules.
+- **CallService (`src/server/services/call-service.ts`)** owns Twilio orchestration, LLM turns, state transitions, and persistence hooks.
+- **CallStore (`src/server/store`)** auto-selects Upstash Redis when credentials are present, otherwise falls back to the in-memory store used in local dev.
+- **PlanetScale (via Prisma)** stores runs, calls, transcript turns, and metrics (`prisma/schema.prisma`).
+- Next.js API routes (`/api/start-calls`, `/api/twilio/*`, `/api/events`, `/api/calls/[id]`) remain thin adapters so migrating to a dedicated backend later is straightforward.
+- **Sentry (`sentry.*.config.ts`)** captures frontend & backend errors when the DSN is configured.
 
 ### Manual test flow
 
@@ -115,10 +137,10 @@ Visit `http://localhost:3000` and try an example query!
 
 ### Remaining TODOs / Next steps
 
-- Switch from the `<Gather>` loop to full-duplex Twilio Media Streams + Deepgram for word-by-word transcripts.
-- Wire the “Take Over” control into a Twilio Voice Client/WebRTC participant so the operator can actually barge in.
-- Persist run + call state to durable storage (currently in-memory).
-- Add analytics + guardrail evaluation hooks (e.g., COVAL) before production rollout.
+- **Phase 2:** Switch from the `<Gather>` loop to full-duplex Twilio Media Streams + Deepgram for word-by-word transcripts.
+- **Phase 3:** Wire the “Take Over” control into a Twilio Voice Client/WebRTC participant so the operator can actually barge in.
+- **Phase 4:** Add COVAL evaluation harness + automated reporting.
+- Integrate Clerk for auth and Natural for payments when user-facing rollout is ready.
 
 ## 📋 Example Queries
 

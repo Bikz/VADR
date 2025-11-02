@@ -4,8 +4,9 @@ import { env, resolvePublicBaseUrl } from '@/lib/env';
 import { callService } from '@/server/services/call-service';
 import type { GatherAttributes, SayAttributes } from 'twilio/lib/twiml/VoiceResponse';
 
-function buildGatherResponse(runId: string, callId: string) {
-  const prep = callService.getRun(runId)?.prep;
+async function buildGatherResponse(runId: string, callId: string) {
+  const runSession = await callService.getRun(runId);
+  const prep = runSession?.prep;
   const voice = env.twilioVoiceName();
   const baseUrl = resolvePublicBaseUrl();
   const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     return new Response('Missing identifiers', { status: 400 });
   }
 
-  const response = buildGatherResponse(runId, callId);
+  const response = await buildGatherResponse(runId, callId);
   return new Response(response.toString(), {
     headers: { 'Content-Type': 'text/xml' },
   });

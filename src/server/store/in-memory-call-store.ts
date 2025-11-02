@@ -1,11 +1,5 @@
 import type { Call, CallState, TranscriptTurn } from '@/types';
-import type {
-  CallEvent,
-  CallSession,
-  CallStore,
-  CreateRunParams,
-  RunSession
-} from './types';
+import type { CallSession, CallStore, CreateRunParams, RunSession } from './types';
 
 const TERMINAL_STATES: CallState[] = ['completed', 'failed', 'voicemail'];
 
@@ -13,9 +7,8 @@ export class InMemoryCallStore implements CallStore {
   private runs = new Map<string, RunSession>();
   private calls = new Map<string, CallSession>();
   private callSidToId = new Map<string, string>();
-  private listeners = new Map<string, Set<(event: CallEvent) => void>>();
 
-  createRun(params: CreateRunParams): RunSession {
+  async createRun(params: CreateRunParams): Promise<RunSession> {
     const { runId, query, createdBy, prep, leads } = params;
 
     const existing = this.runs.get(runId);
@@ -67,12 +60,10 @@ export class InMemoryCallStore implements CallStore {
       });
     });
 
-    this.publishRun(runId);
-
     return session;
   }
 
-  attachCallSid(callId: string, callSid: string) {
+  async attachCallSid(callId: string, callSid: string): Promise<void> {
     const session = this.calls.get(callId);
     if (!session) return;
 
@@ -80,13 +71,13 @@ export class InMemoryCallStore implements CallStore {
     this.callSidToId.set(callSid, callId);
   }
 
-  findCallBySid(callSid: string): CallSession | undefined {
+  async findCallBySid(callSid: string): Promise<CallSession | undefined> {
     const callId = this.callSidToId.get(callSid);
     if (!callId) return undefined;
     return this.calls.get(callId);
   }
 
-  updateCallState(callId: string, state: CallState, extra: Partial<Call> = {}) {
+  async updateCallState(callId: string, state: CallState, extra: Partial<Call> = {}): Promise<void> {
     const session = this.calls.get(callId);
     if (!session) return;
 
@@ -110,11 +101,10 @@ export class InMemoryCallStore implements CallStore {
     };
 
     this.calls.set(callId, session);
-    this.publishCall(callId);
     this.recalculateRunStatus(session.runId);
   }
 
-  appendTranscript(callId: string, turn: TranscriptTurn, sentiment?: Call['sentiment']) {
+  async appendTranscript(callId: string, turn: TranscriptTurn, sentiment?: Call['sentiment']): Promise<void> {
     const session = this.calls.get(callId);
     if (!session) return;
 
@@ -123,113 +113,40 @@ export class InMemoryCallStore implements CallStore {
       session.call.sentiment = sentiment;
     }
 
-    if (turn.speaker === 'ai') {
-      session.conversation.push({ role: 'assistant', content: turn.text });
-    } else {
-      session.conversation.push({ role: 'user', content: turn.text });
-    }
-
-    this.publish(session.runId, {
-      type: 'call:transcript',
-      runId: session.runId,
-      callId,
-      turn,
+    session.conversation.push({
+      role: turn.speaker === 'ai' ? 'assistant' : 'user',
+      content: turn.text,
     });
-
-    this.publishCall(callId);
   }
 
-  getRun(runId: string): RunSession | undefined {
+  async getRun(runId: string): Promise<RunSession | undefined> {
     return this.runs.get(runId);
   }
 
-  getCall(callId: string): CallSession | undefined {
+  async getCall(callId: string): Promise<CallSession | undefined> {
     return this.calls.get(callId);
   }
 
-  getConversationHistory(callId: string) {
+  async getConversationHistory(callId: string) {
     return this.calls.get(callId)?.conversation ?? [];
   }
 
-  getPrepForRun(runId: string) {
+  async getPrepForRun(runId: string) {
     return this.runs.get(runId)?.prep;
   }
 
-  setListening(callId: string, isListening: boolean) {
+  async setListening(callId: string, isListening: boolean): Promise<void> {
     const session = this.calls.get(callId);
     if (!session) return;
 
     session.call.isListening = isListening;
-    this.publishCall(callId);
   }
 
-  setTakeOver(callId: string, isTakenOver: boolean) {
+  async setTakeOver(callId: string, isTakenOver: boolean): Promise<void> {
     const session = this.calls.get(callId);
     if (!session) return;
 
     session.call.isTakenOver = isTakenOver;
-    this.publishCall(callId);
-  }
-
-  subscribe(runId: string, listener: (event: CallEvent) => void) {
-    let listeners = this.listeners.get(runId);
-    if (!listeners) {
-      listeners = new Set();
-      this.listeners.set(runId, listeners);
-    }
-
-    listeners.add(listener);
-
-    const run = this.runs.get(runId);
-    if (run) {
-      listener({ type: 'run:update', run: run.run });
-      run.callIds.forEach((callId) => {
-        const session = this.calls.get(callId);
-        if (session) {
-          listener({ type: 'call:update', runId, call: session.call });
-        }
-      });
-    }
-  }
-
-  unsubscribe(runId: string, listener: (event: CallEvent) => void) {
-    const listeners = this.listeners.get(runId);
-    if (!listeners) return;
-
-    listeners.delete(listener);
-    if (listeners.size === 0) {
-      this.listeners.delete(runId);
-    }
-  }
-
-  private publish(runId: string, event: CallEvent) {
-    const listeners = this.listeners.get(runId);
-    if (!listeners) return;
-
-    listeners.forEach((listener) => {
-      try {
-        listener(event);
-      } catch (error) {
-        console.error('Failed to publish call event', error);
-      }
-    });
-  }
-
-  private publishRun(runId: string) {
-    const runSession = this.runs.get(runId);
-    if (!runSession) return;
-    this.publish(runId, { type: 'run:update', run: runSession.run });
-  }
-
-  private publishCall(callId: string) {
-    const session = this.calls.get(callId);
-    if (!session) return;
-
-    this.publish(session.runId, {
-      type: 'call:update',
-      runId: session.runId,
-      call: session.call,
-    });
   }
 
   private recalculateRunStatus(runId: string) {
@@ -248,8 +165,6 @@ export class InMemoryCallStore implements CallStore {
     if (runSession.run.status !== nextStatus) {
       runSession.run.status = nextStatus;
       runSession.run.calls = callSessions;
-      this.publishRun(runId);
     }
   }
 }
-

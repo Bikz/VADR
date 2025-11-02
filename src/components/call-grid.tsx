@@ -10,10 +10,7 @@ interface CallGridProps {
   onComplete?: (calls: Call[]) => void;
 }
 
-type EventPayload =
-  | { type: 'call:update'; runId: string; call: Call }
-  | { type: 'run:update'; run: VADRRun }
-  | { type: 'call:transcript'; runId: string; callId: string; turn: Call['transcript'][number] };
+type EventPayload = { type: 'snapshot'; run: VADRRun };
 
 export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
   const [runState, setRunState] = useState<VADRRun>(run);
@@ -30,16 +27,6 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     completionRef.current = run.status === 'completed';
   }, [run]);
 
-  const applyCallUpdate = useCallback((call: Call) => {
-    setCallsById((previous) => {
-      const next = { ...previous, [call.id]: call };
-      if (!orderRef.current.includes(call.id)) {
-        orderRef.current = [...orderRef.current, call.id];
-      }
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
     const source = new EventSource(`/api/events?runId=${run.id}`);
 
@@ -47,31 +34,20 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
       if (!message.data) return;
       try {
         const payload = JSON.parse(message.data) as EventPayload;
-        if (payload.type === 'call:update') {
-          applyCallUpdate(payload.call);
-        }
-
-        if (payload.type === 'call:transcript') {
-          setCallsById((previous) => {
-            const existing = previous[payload.callId];
-            if (!existing) return previous;
-            return {
-              ...previous,
-              [payload.callId]: {
-                ...existing,
-                transcript: [...existing.transcript, payload.turn],
-              },
-            };
-          });
-        }
-
-        if (payload.type === 'run:update') {
+        if (payload.type === 'snapshot') {
           setRunState(payload.run);
           onRunUpdate?.(payload.run);
+
+          setCallsById(
+            Object.fromEntries(payload.run.calls.map((call) => [call.id, call]))
+          );
+          orderRef.current = payload.run.calls.map((call) => call.id);
 
           if (payload.run.status === 'completed' && !completionRef.current) {
             completionRef.current = true;
             onComplete?.(payload.run.calls);
+          } else if (payload.run.status !== 'completed') {
+            completionRef.current = false;
           }
         }
       } catch (error) {
@@ -87,7 +63,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
       completionRef.current = runState.status === 'completed';
       source.close();
     };
-  }, [applyCallUpdate, onComplete, onRunUpdate, run.id, runState.status]);
+  }, [onComplete, onRunUpdate, run.id, runState.status]);
 
   const orderedCalls = useMemo(() => {
     const entries = orderRef.current.map((id) => callsById[id]).filter(Boolean);

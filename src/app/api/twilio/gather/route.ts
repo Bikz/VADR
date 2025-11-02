@@ -26,6 +26,9 @@ export async function POST(request: NextRequest) {
   const form = parseFormBody(rawBody);
   const speechResult = form.SpeechResult?.trim();
   const callSid = form.CallSid;
+  const voice = env.twilioVoiceName();
+  const baseUrl = resolvePublicBaseUrl();
+  const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
 
   try {
     const { replyText } = await callService.handleGather({
@@ -34,10 +37,6 @@ export async function POST(request: NextRequest) {
       speechResult,
       callSid,
     });
-
-    const voice = env.twilioVoiceName();
-    const baseUrl = resolvePublicBaseUrl();
-    const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
 
     const response = new VoiceResponse();
     const gatherOptions: GatherAttributes = {
@@ -64,7 +63,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Failed to handle gather', error);
-    return new Response('Server error', { status: 500 });
+    const response = new VoiceResponse();
+    if (voice) {
+      const sayVoice = voice as SayAttributes['voice'];
+      response.say({ voice: sayVoice }, 'Sorry, we had an application error. Goodbye.');
+    } else {
+      response.say('Sorry, we had an application error. Goodbye.');
+    }
+    response.hangup();
+    return new Response(response.toString(), {
+      status: 200,
+      headers: { 'Content-Type': 'text/xml' },
+    });
   }
 }
 export const runtime = 'nodejs';

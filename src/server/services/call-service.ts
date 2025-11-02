@@ -1,11 +1,13 @@
-import type { Call, CallPrep, Lead, VADRRun } from '@/types';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Call, CallPrep, Lead, TranscriptTurn, VADRRun } from '@/types';
+import { prisma } from '@/lib/db';
 import { getTwilioClient } from '@/lib/twilio';
 import { env, resolvePublicBaseUrl } from '@/lib/env';
 import { createTranscriptTurn } from '@/lib/transcript';
 import { generateAgentReply } from '@/lib/agent';
 import {
   callStore,
-  type CallEvent,
+  type CallSession,
   type CallStore,
   type RunSession
 } from '@/server/store';
@@ -36,6 +38,8 @@ interface StatusArgs {
 
 const DEFAULT_REPLY = 'Thanks for sharing. Could you tell me more?';
 
+type PrismaExecutor = Prisma.TransactionClient | PrismaClient;
+
 class CallService {
   constructor(private readonly store: CallStore) {}
 
@@ -43,7 +47,10 @@ class CallService {
     const { runId, query, leads, prep } = args;
     const createdBy = args.createdBy ?? 'vadr-user';
 
-    const session = this.store.createRun({ runId, query, createdBy, prep, leads });
+    const session = await this.store.createRun({ runId, query, createdBy, prep, leads });
+    const callSessions = await this.fetchCallSessions(session.callIds);
+
+    await this.persistRunSession(session, callSessions);
 
     const client = getTwilioClient();
     const fromNumber = env.twilioPhoneNumber();
@@ -52,10 +59,6 @@ class CallService {
     }
 
     const baseUrl = resolvePublicBaseUrl();
-
-    const callSessions = session.callIds
-      .map((callId) => this.store.getCall(callId))
-      .filter((value): value is NonNullable<typeof value> => Boolean(value));
 
     console.log('[call-service] creating outbound calls', {
       runId,
@@ -92,7 +95,7 @@ class CallService {
             status: result.status,
           });
 
-          this.store.attachCallSid(callSession.call.id, result.sid);
+          await this.store.attachCallSid(callSession.call.id, result.sid);
         } catch (error) {
           console.error('[call-service] failed to start call', {
             runId,
@@ -100,7 +103,11 @@ class CallService {
             to: callSession.call.lead.phone,
             error,
           });
-          this.store.updateCallState(callSession.call.id, 'failed');
+          await this.store.updateCallState(callSession.call.id, 'failed');
+          const updated = await this.store.getCall(callSession.call.id);
+          if (updated) {
+            await this.persistCallSession(updated);
+          }
         }
       })
     );
@@ -110,31 +117,40 @@ class CallService {
 
   async handleGather({ runId, callId, speechResult, callSid }: GatherArgs) {
     if (callSid) {
-      const callSession = this.store.findCallBySid(callSid);
+      const callSession = await this.store.findCallBySid(callSid);
       if (callSession && callSession.call.id !== callId) {
-        this.store.attachCallSid(callId, callSid);
+        await this.store.attachCallSid(callId, callSid);
       }
     }
 
-    const callSession = this.store.getCall(callId);
-    const runSession = this.store.getRun(runId);
+    const callSession = await this.store.getCall(callId);
+    const runSession = await this.store.getRun(runId);
 
     if (!callSession || !runSession) {
       throw new Error('Unknown call session');
     }
 
     if (callSession.call.state !== 'connected') {
-      this.store.updateCallState(callId, 'connected');
+      await this.store.updateCallState(callId, 'connected');
+      const updated = await this.store.getCall(callId);
+      if (updated) {
+        await this.persistCallSession(updated);
+      }
     }
 
     let replyText = DEFAULT_REPLY;
 
     if (speechResult && speechResult.trim().length > 0) {
       const humanTurn = createTranscriptTurn(callId, 'human', speechResult.trim());
-      this.store.appendTranscript(callId, humanTurn);
+      await this.store.appendTranscript(callId, humanTurn);
+      await this.persistTranscriptTurn(runId, callId, humanTurn);
+      const updatedAfterHuman = await this.store.getCall(callId);
+      if (updatedAfterHuman) {
+        await this.persistCallSession(updatedAfterHuman);
+      }
 
       try {
-        const conversation = this.store.getConversationHistory(callId);
+        const conversation = await this.store.getConversationHistory(callId);
         console.log('[call-service] received speech', {
           runId,
           callId,
@@ -157,7 +173,12 @@ class CallService {
     }
 
     const aiTurn = createTranscriptTurn(callId, 'ai', replyText);
-    this.store.appendTranscript(callId, aiTurn);
+    await this.store.appendTranscript(callId, aiTurn);
+    await this.persistTranscriptTurn(runId, callId, aiTurn);
+    const updatedAfterAi = await this.store.getCall(callId);
+    if (updatedAfterAi) {
+      await this.persistCallSession(updatedAfterAi);
+    }
 
     console.log('[call-service] responding with ai turn', {
       runId,
@@ -170,10 +191,10 @@ class CallService {
 
   async handleStatus({ runId, callId, callStatus, answeredBy, callSid, callDuration }: StatusArgs) {
     if (callSid) {
-      this.store.attachCallSid(callId, callSid);
+      await this.store.attachCallSid(callId, callSid);
     }
 
-    const callSession = this.store.getCall(callId);
+    const callSession = await this.store.getCall(callId);
     if (!callSession) {
       throw new Error('Unknown call session');
     }
@@ -192,22 +213,35 @@ class CallService {
 
     if (state === 'completed') {
       const durationSeconds = Number.parseInt(callDuration ?? '0', 10);
-      this.store.updateCallState(callId, state, { duration: Number.isFinite(durationSeconds) ? durationSeconds : 0 });
+      await this.store.updateCallState(callId, state, { duration: Number.isFinite(durationSeconds) ? durationSeconds : 0 });
     } else {
-      this.store.updateCallState(callId, state);
+      await this.store.updateCallState(callId, state);
+    }
+
+    const updated = await this.store.getCall(callId);
+    if (updated) {
+      await this.persistCallSession(updated);
     }
   }
 
   async setListening(callId: string, isListening: boolean) {
-    this.store.setListening(callId, isListening);
+    await this.store.setListening(callId, isListening);
+    const updated = await this.store.getCall(callId);
+    if (updated) {
+      await this.persistCallSession(updated);
+    }
   }
 
   async setTakeOver(callId: string, isTakenOver: boolean) {
-    this.store.setTakeOver(callId, isTakenOver);
+    await this.store.setTakeOver(callId, isTakenOver);
+    const updated = await this.store.getCall(callId);
+    if (updated) {
+      await this.persistCallSession(updated);
+    }
   }
 
   async endCall(callId: string) {
-    const callSession = this.store.getCall(callId);
+    const callSession = await this.store.getCall(callId);
     if (!callSession) return;
 
     const twilioSid = callSession.twilioCallSid;
@@ -224,23 +258,144 @@ class CallService {
       }
     }
 
-    this.store.updateCallState(callId, 'completed');
+    await this.store.updateCallState(callId, 'completed');
+    const updated = await this.store.getCall(callId);
+    if (updated) {
+      await this.persistCallSession(updated);
+    }
   }
 
-  subscribe(runId: string, listener: (event: CallEvent) => void) {
-    this.store.subscribe(runId, listener);
-  }
-
-  unsubscribe(runId: string, listener: (event: CallEvent) => void) {
-    this.store.unsubscribe(runId, listener);
-  }
-
-  getRun(runId: string) {
+  async getRun(runId: string) {
     return this.store.getRun(runId);
   }
 
-  getCall(callId: string) {
+  async getCall(callId: string) {
     return this.store.getCall(callId);
+  }
+
+  private async fetchCallSessions(callIds: string[]): Promise<CallSession[]> {
+    const sessions = await Promise.all(callIds.map((callId) => this.store.getCall(callId)));
+    return sessions.filter((value): value is CallSession => Boolean(value));
+  }
+
+  private toDate(value?: number) {
+    return typeof value === 'number' ? new Date(value) : null;
+  }
+
+  private async persistRunSession(session: RunSession, callSessions: CallSession[]) {
+    if (!prisma) return;
+
+    await prisma.$transaction(async (tx) => {
+      const prepJson = session.prep as unknown as Prisma.InputJsonValue;
+
+      await tx.run.upsert({
+        where: { id: session.run.id },
+        create: {
+          id: session.run.id,
+          query: session.run.query,
+          createdBy: session.run.createdBy,
+          status: session.run.status,
+          startedAt: new Date(session.run.startedAt),
+          prep: prepJson,
+        },
+        update: {
+          query: session.run.query,
+          status: session.run.status,
+          startedAt: new Date(session.run.startedAt),
+          prep: prepJson,
+        },
+      });
+
+      for (const callSession of callSessions) {
+        await this.upsertCall(tx, callSession);
+      }
+    });
+  }
+
+  private async persistCallSession(callSession: CallSession) {
+    if (!prisma) return;
+    await this.upsertCall(prisma, callSession);
+  }
+
+  private async persistTranscriptTurn(runId: string, callId: string, turn: TranscriptTurn) {
+    if (!prisma) return;
+
+    try {
+      await prisma.transcriptTurn.upsert({
+        where: { id: turn.id },
+        create: {
+          id: turn.id,
+          callId,
+          speaker: turn.speaker,
+          text: turn.text,
+          timestamp: new Date(turn.timestamp),
+          t0Ms: turn.t0_ms ?? null,
+          t1Ms: turn.t1_ms ?? null,
+        },
+        update: {
+          text: turn.text,
+          t0Ms: turn.t0_ms ?? null,
+          t1Ms: turn.t1_ms ?? null,
+        },
+      });
+
+      await prisma.call.update({
+        where: { id: callId },
+        data: {
+          updatedAt: new Date(),
+        },
+      }).catch(() => {});
+    } catch (error) {
+      console.error('[call-service] failed to persist transcript turn', {
+        runId,
+        callId,
+        turnId: turn.id,
+        error,
+      });
+    }
+  }
+
+  private async upsertCall(executor: PrismaExecutor, callSession: CallSession) {
+
+    const { call } = callSession;
+    const lead = call.lead;
+
+    await executor.call.upsert({
+      where: { id: call.id },
+      create: {
+        id: call.id,
+        runId: callSession.runId,
+        leadId: lead.id,
+        leadName: lead.name,
+        leadPhone: lead.phone,
+        leadSource: lead.source,
+        leadRating: lead.rating,
+        leadReviewCount: lead.reviewCount,
+        leadDescription: lead.description,
+        leadConfidence: lead.confidence,
+        leadUrl: lead.url,
+        state: call.state,
+        sentiment: call.sentiment,
+        startedAt: this.toDate(call.startedAt) ?? undefined,
+        endedAt: this.toDate(call.endedAt) ?? undefined,
+        durationSeconds: call.duration ?? null,
+      },
+      update: {
+        state: call.state,
+        sentiment: call.sentiment,
+        startedAt: this.toDate(call.startedAt) ?? undefined,
+        endedAt: this.toDate(call.endedAt) ?? undefined,
+        durationSeconds: call.duration ?? null,
+        leadName: lead.name,
+        leadPhone: lead.phone,
+        leadSource: lead.source,
+        leadRating: lead.rating,
+        leadReviewCount: lead.reviewCount,
+        leadDescription: lead.description,
+        leadConfidence: lead.confidence,
+        leadUrl: lead.url,
+      },
+    });
   }
 
   private mapStatus(callStatus: string, answeredBy?: string): { state: Call['state'] } {
@@ -273,4 +428,3 @@ class CallService {
 }
 
 export const callService = new CallService(callStore);
-export type { CallEvent };

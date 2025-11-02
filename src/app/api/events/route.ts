@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { callService, type CallEvent } from '@/server/services/call-service';
+import { callService } from '@/server/services/call-service';
 
 const encoder = new TextEncoder();
 
@@ -18,20 +18,43 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (event: CallEvent) => {
-        const payload = JSON.stringify(event);
-        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
-      };
-
-      callService.subscribe(runId, send);
+      let active = true;
+      let lastSignature: string | null = null;
 
       const heartbeat = setInterval(() => {
         controller.enqueue(encoder.encode(': ping\n\n'));
       }, 15000);
 
+      const poll = async () => {
+        if (!active) return;
+
+        try {
+          const session = await callService.getRun(runId);
+          if (session) {
+            const snapshot = {
+              type: 'snapshot' as const,
+              run: session.run,
+            };
+
+            const signature = JSON.stringify(snapshot.run);
+            if (signature !== lastSignature) {
+              lastSignature = signature;
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`));
+            }
+          }
+        } catch (error) {
+          console.error('[events] failed to poll run', error);
+        } finally {
+          if (active) {
+            setTimeout(poll, 1000);
+          }
+        }
+      };
+
+      void poll();
       cleanup = () => {
+        active = false;
         clearInterval(heartbeat);
-        callService.unsubscribe(runId, send);
       };
     },
     cancel() {

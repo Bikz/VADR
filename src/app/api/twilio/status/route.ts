@@ -43,10 +43,10 @@ export async function POST(request: NextRequest) {
       callId,
       error,
     });
-    return new Response('Server error', { status: 500 });
+    return new Response('error', { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return new Response('ok', { status: 200 });
 }
 
 export async function GET(request: NextRequest) {
