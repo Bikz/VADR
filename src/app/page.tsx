@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Sparkles, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,14 @@ const EXAMPLE_QUERIES = [
 ];
 
 type Stage = 'search' | 'review' | 'calling' | 'summary';
+
+type GeolocationPermissionState = 'granted' | 'prompt' | 'denied';
+
+type GeolocationPermissionStatus = {
+  state: GeolocationPermissionState;
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+};
 
 interface RunSummary {
   highlights: string[];
@@ -98,12 +106,13 @@ export default function Home() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [isRequestingLocation, setIsRequestingLocation] = useState(true);
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<GeolocationPermissionState | 'unknown'>('unknown');
 
   // Reverse geocode coordinates to get city name
-  const reverseGeocode = async (lat: number, lng: number): Promise<string | null> => {
+  const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<string | null> => {
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
@@ -121,38 +130,89 @@ export default function Home() {
       console.warn('Reverse geocoding error:', error);
       return null;
     }
-  };
-
-  // Auto-request location on mount
-  useEffect(() => {
-    if ('geolocation' in navigator) {
-      setIsRequestingLocation(true);
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const coords = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(coords);
-          
-          const cityName = await reverseGeocode(coords.lat, coords.lng);
-          if (cityName) {
-            setLocationName(cityName);
-          }
-          setIsRequestingLocation(false);
-        },
-        (error) => {
-          console.warn('Geolocation error:', error);
-          setLocationError('Location access denied. Please enable location access to use VADR.');
-          setIsRequestingLocation(false);
-        },
-        { timeout: 10000, enableHighAccuracy: true }
-      );
-    } else {
-      setLocationError('Geolocation not supported in your browser.');
-      setIsRequestingLocation(false);
-    }
   }, []);
+
+  const handleRequestLocation = useCallback(() => {
+    if (!('geolocation' in navigator)) {
+      setLocationError('Geolocation is not supported in this browser.');
+      setPermissionState('denied');
+      return;
+    }
+
+    setIsRequestingLocation(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setUserLocation(coords);
+        setPermissionState('granted');
+
+        const cityName = await reverseGeocode(coords.lat, coords.lng);
+        if (cityName) {
+          setLocationName(cityName);
+        }
+        setIsRequestingLocation(false);
+      },
+      (error) => {
+        console.warn('Geolocation error:', error);
+        setIsRequestingLocation(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          setPermissionState('denied');
+          setLocationError('Location access was denied. Enable it in your browser settings or enter a different location.');
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setLocationError('We could not determine your location. Please try again or check your connection.');
+        } else if (error.code === error.TIMEOUT) {
+          setLocationError('Location request timed out. Please try again.');
+        } else {
+          setLocationError('We were unable to access your location. Please try again.');
+        }
+      },
+      { timeout: 15000, enableHighAccuracy: true }
+    );
+  }, [reverseGeocode]);
+
+  useEffect(() => {
+    if (!('permissions' in navigator)) {
+      return;
+    }
+
+    let cancelled = false;
+    let permissionStatus: GeolocationPermissionStatus | null = null;
+
+    const anyNavigator = navigator as any;
+    const handlePermissionChange = () => {
+      if (!permissionStatus) return;
+      setPermissionState(permissionStatus.state);
+      if (permissionStatus.state === 'granted' && !userLocation && !isRequestingLocation) {
+        handleRequestLocation();
+      }
+    };
+
+    anyNavigator.permissions
+      .query({ name: 'geolocation' })
+      .then((status: GeolocationPermissionStatus) => {
+        if (cancelled) return;
+        permissionStatus = status;
+        setPermissionState(status.state);
+        status.addEventListener?.('change', handlePermissionChange);
+
+        if (status.state === 'granted' && !userLocation) {
+          handleRequestLocation();
+        }
+      })
+      .catch(() => {
+        setPermissionState('unknown');
+      });
+
+    return () => {
+      cancelled = true;
+      permissionStatus?.removeEventListener?.('change', handlePermissionChange);
+    };
+  }, [handleRequestLocation, isRequestingLocation, userLocation]);
 
   const selectedCount = useMemo(
     () => candidates.filter(lead => selectedLeadIds[lead.id]).length,
@@ -163,7 +223,7 @@ export default function Home() {
     if (!searchQuery.trim()) return;
 
     if (!userLocation) {
-      setSearchError('Location is required. Please enable location access.');
+      setSearchError('Location is required. Click "Use my location" and approve access, then try again.');
       return;
     }
 
@@ -287,23 +347,50 @@ export default function Home() {
 
       <div className="w-full max-w-2xl space-y-6">
         {/* Location status */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {isRequestingLocation ? (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
               <span>Getting your precise location...</span>
             </div>
           ) : userLocation ? (
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-2">
               <p className="text-sm text-gray-600">
                 📍 Searching near: <span className="font-medium text-gray-900">{locationName || 'Your location'}</span>
               </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-gray-500 hover:text-gray-900"
+                onClick={handleRequestLocation}
+              >
+                Refresh location
+              </Button>
             </div>
-          ) : locationError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {locationError}
+          ) : (
+            <div className="flex flex-col items-center gap-2 text-center">
+              {locationError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {locationError}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">Click below to let VADR tailor results to where you are.</p>
+              )}
+              <Button
+                onClick={handleRequestLocation}
+                disabled={isRequestingLocation}
+                size="sm"
+                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+              >
+                Use my location
+              </Button>
+              {permissionState === 'denied' && (
+                <p className="text-xs text-gray-500">
+                  Location access is blocked. Enable it in your browser settings and click the button again.
+                </p>
+              )}
             </div>
-          ) : null}
+          )}
         </div>
 
         {/* Search bar */}
