@@ -41,82 +41,98 @@ User Query → Web Search → Find Phone Numbers → 6 Parallel Calls → Live T
 - Red flags monitoring
 - Disallowed topics guardrails
 
+## 🏗️ Monorepo Structure
+
+VADR is organized as a Bun workspace monorepo:
+
+```
+VADR/
+├── packages/
+│   ├── backend/       # Fastify API (deployed to Railway)
+│   ├── frontend/      # Next.js app (deployed to Vercel)
+│   └── shared/        # Shared Zod schemas and types
+├── railway.toml       # Railway deployment config
+└── package.json       # Workspace configuration
+```
+
 ## 🚀 Quick Start
 
-### Frontend (Next.js)
+### Prerequisites
+
+Install [Bun](https://bun.sh) (v1.1.34 or higher):
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+### 1. Install Dependencies (Monorepo Root)
 
 ```bash
-# Install frontend dependencies
+# Install all workspace dependencies
 bun install
+```
 
-# Set up environment variables
+This installs dependencies for all packages (backend, frontend, shared).
+
+### 2. Set Up Environment Variables
+
+**Frontend** (`packages/frontend/.env.local`):
+```bash
+cd packages/frontend
 cp .env.example .env.local
-# Edit .env.local and add:
+# Edit and add:
 # NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
-# METORIAL_API_KEY=your-metorial-api-key-here
-
-# Run development server
-bun run dev
-
-# Pre-deploy sanity check (typecheck + lint + production build)
-bun run verify
-
-# Build for production
-bun run build
 ```
 
-Visit `http://localhost:3000` and try an example query (with the backend running).
-
-### Backend (Fastify + Bun)
-
+**Backend** (`packages/backend/.env`):
 ```bash
-cd backend
-
-# Install backend dependencies
-bun install
-
-# Provide required env vars (Twilio, OpenAI, Prisma, etc.)
+cd packages/backend
 cp .env.example .env
-# Fill in TWILIO_*, OPENAI_API_KEY, DATABASE_URL, METORIAL_API_KEY, GOOGLE_PLACES_API_KEY
-
-# Start the backend API
-bun run dev
-
-# Optional: run backend smoke tests
-# bun run tsx scripts/test-call-flow.ts
-# bun run node scripts/test-exa-search.js
+# Fill in TWILIO_*, OPENAI_API_KEY, DATABASE_URL, GOOGLE_PLACES_API_KEY
 ```
 
-### Environment Variables
+### 3. Run Development Servers
 
-Frontend (`.env.local`):
+**Terminal 1 - Backend:**
+```bash
+# From monorepo root
+bun run dev:backend
+# Server runs at http://localhost:3001
+```
 
+**Terminal 2 - Frontend:**
+```bash
+# From monorepo root
+bun run dev:frontend
+# Frontend runs at http://localhost:3000
+```
+
+### 4. Test the Application
+
+Visit `http://localhost:3000` and try an example query!
+
+### Environment Variables Reference
+
+**Frontend** (`packages/frontend/.env.local`):
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
-METORIAL_API_KEY=your-metorial-api-key-here
 ```
 
-Backend (`backend/.env`):
-
+**Backend** (`packages/backend/.env`):
 ```env
 PORT=3001
 HOST=0.0.0.0
-DATABASE_URL=postgres://...
+DATABASE_URL=postgresql://...
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
 TWILIO_PHONE_NUMBER=...
 OPENAI_API_KEY=...
 VOICE_AGENT_MODEL=gpt-4o-mini
-PUBLIC_BASE_URL=https://your-backend.example.com
-METORIAL_API_KEY=your-metorial-api-key-here
-GOOGLE_PLACES_API_KEY=your-google-places-api-key
+PUBLIC_BASE_URL=https://your-backend.railway.app
+GOOGLE_PLACES_API_KEY=...
+FRONTEND_URL=http://localhost:3000  # Optional for CORS
 ```
 
-Get your Metorial API key from: https://metorial.com/
-
-**Note**: This project uses Exa (neural web search) via Metorial's MCP platform. Metorial provides an integration layer that connects to Exa and other search services.
-
-**Important**: You must configure your Exa API key in your Metorial deployment settings. Go to your Metorial dashboard, find the Exa deployment (ID: `svd_0mhhcb7z0wvg34K6xJugat`), and add your Exa API key there. The Exa API key cannot be passed via environment variables - it must be configured in the Metorial deployment.
+See [DEPLOY.md](./DEPLOY.md) for complete deployment instructions.
 
 ## 📋 Example Queries
 
@@ -142,54 +158,40 @@ Get your Metorial API key from: https://metorial.com/
 - **Accessible**: High contrast ratios
 - **Responsive**: Mobile, tablet, desktop support
 
-## 🧩 Architecture (MVP)
+## 🧩 Architecture
 
 ### Current Implementation
-- Fastify backend powers lead search, outbound calling, and Twilio webhooks
-- Next.js frontend consumes real run data over SSE for live call updates
-- Shared Zod contracts validate every request/response between apps
-- UI renders actual transcripts, states, and summary analytics from the backend sessions
 
-### Production Architecture
 ```
-┌─────────────┐
-│   Next.js   │  Frontend (Edge-first)
-│   Frontend  │
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│  Search &   │  SerpAPI, Tavily, Google Places
-│ Prospecting │  Yelp, Yellow Pages APIs
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│   Parallel  │  Twilio Programmable Voice
-│   Dialer    │  Conference + WebSocket bots
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│    Voice    │  LLM + TTS loop
-│    Agent    │  MCP tools via Metorial
-│   Runtime   │  Evals via COVAL
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│   Memory    │  CAPTON / Mem0 / Supermemory
-│    Layer    │  Persist business facts
-└─────────────┘
+┌─────────────────────┐
+│   Next.js Frontend  │  Vercel (packages/frontend)
+│   - Search UI       │
+│   - Live call grid  │
+│   - SSE streaming   │
+└──────────┬──────────┘
+           │ HTTPS/SSE
+           ▼
+┌─────────────────────┐
+│  Fastify Backend    │  Railway (packages/backend)
+│  - Google Places    │
+│  - Twilio webhooks  │
+│  - Call orchestration
+└──────────┬──────────┘
+           │
+    ┌──────┴──────┐
+    ▼             ▼
+┌────────┐   ┌──────────┐
+│ Twilio │   │ OpenAI   │
+│ Voice  │   │ Realtime │
+└────────┘   └──────────┘
 ```
 
-## 🤝 Hackathon Integrations
-
-### COVAL (Voice Agent Evals)
-Use COVAL to simulate synthetic callers with different accents and intents against your prompt trees to tune handoffs and guardrails before real calls.
-
-**Integration Point**: Pre-deployment testing of AI agent responses
-
-### Metorial (MCP Platform)
-Metorial provides an MCP-based integration layer with SDKs and a catalog of MCP servers. Plug tools without custom glue (OAuth, tracing, per-user isolation).
-
-**Integration Point**: Attach SerpAPI, Tavily, Yelp, Google Places, Twilio via MCP
+**Key Features:**
+- **Monorepo**: Shared types via `packages/shared` with Zod schemas
+- **Real-time**: SSE streaming for live transcripts and call state updates
+- **Telephony**: Twilio Programmable Voice for actual phone calls
+- **AI Agent**: OpenAI Realtime API for voice conversations
+- **Persistence**: PostgreSQL via Prisma for call history
 
 ## 📊 Data Model
 
@@ -212,25 +214,28 @@ Metorial provides an MCP-based integration layer with SDKs and a catalog of MCP 
 
 ## 🛣️ Roadmap
 
-- [ ] Real telephony integration (Twilio)
-- [ ] Live transcription (Deepgram/Gladia)
-- [ ] Voice agent runtime (LLM + TTS)
-- [ ] Memory persistence layer
-- [ ] User authentication
+**Implemented:**
+- ✅ Twilio telephony integration
+- ✅ OpenAI Realtime API for voice agent
+- ✅ Live transcription streaming
+- ✅ PostgreSQL persistence (Prisma)
+- ✅ Monorepo structure with shared types
+- ✅ Call orchestration and state management
+- ✅ Google Places API for business search
+
+**Planned:**
+- [ ] User authentication & multi-tenancy
 - [ ] Call analytics dashboard
-- [ ] Export to CRM integrations
-- [ ] Pro plan (50 parallel calls)
+- [ ] Export to CRM (Salesforce, HubSpot)
+- [ ] Enhanced memory layer (conversation context)
+- [ ] Call recording playback
+- [ ] Pro plan (50+ parallel calls)
+- [ ] WebSocket support for conference calling
 
 ## 📄 License
 
-MIT License - Built for hackathon demo purposes
-
-## 🙏 Acknowledgments
-
-Built with support from:
-- **COVAL** - AI agent evaluation and simulation
-- **Metorial** - MCP platform for tool integrations
+MIT License
 
 ---
 
-**Note**: This is a demo/MVP implementation. Production use requires proper telephony setup, compliance checks, and user consent flows.
+**Note**: Production use requires proper telephony setup, compliance checks, and user consent flows.

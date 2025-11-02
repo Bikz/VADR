@@ -1,4 +1,6 @@
-# VADR Backend Deployment Guide
+# VADR Deployment Guide
+
+Complete deployment guide for the VADR monorepo (backend on Railway, frontend on Vercel).
 
 ## Prerequisites
 
@@ -8,8 +10,21 @@ npm install -g @railway/cli
 ```
 
 2. Railway account (sign up at https://railway.app)
+3. Vercel account (sign up at https://vercel.com)
 
-## Step-by-Step Deployment
+## Monorepo Structure
+
+```
+VADR/
+├── packages/
+│   ├── backend/       # Fastify API → Railway
+│   ├── frontend/      # Next.js app → Vercel
+│   └── shared/        # Shared types (Zod schemas)
+├── railway.toml       # Railway configuration
+└── package.json       # Monorepo workspace config
+```
+
+## Backend Deployment (Railway)
 
 ### 1. Navigate to the project root
 
@@ -17,7 +32,7 @@ npm install -g @railway/cli
 cd /path/to/VADR
 ```
 
-> The root-level `railway.toml` now tells Railway to build the backend service, so you no longer need to run commands inside `backend/`.
+> The root-level `railway.toml` tells Railway to build from `packages/backend/` with the entire monorepo as build context.
 
 ### 2. Login to Railway
 
@@ -255,6 +270,47 @@ railway link
 railway run bun run dev
 ```
 
+## Frontend Deployment (Vercel)
+
+### 1. Connect Repository to Vercel
+
+1. Go to [Vercel Dashboard](https://vercel.com/new)
+2. Import your GitHub repository
+3. Configure the following:
+   - **Root Directory**: `packages/frontend`
+   - **Framework Preset**: Next.js
+   - **Build Command**: `bun run build`
+   - **Output Directory**: `.next`
+   - **Install Command**: `bun install`
+
+### 2. Set Environment Variables
+
+In Vercel Dashboard → Settings → Environment Variables:
+
+```env
+NEXT_PUBLIC_BACKEND_URL=https://your-railway-url.railway.app
+```
+
+> **Important**: Update this with your actual Railway backend URL after backend deployment
+
+### 3. Deploy
+
+Click "Deploy" and Vercel will automatically build and deploy your frontend.
+
+### 4. Get Your Frontend URL
+
+After deployment, Vercel will provide a URL like: `https://vadr-five.vercel.app`
+
+### 5. Update Backend CORS
+
+Update your Railway backend environment variable:
+
+```bash
+railway variables set FRONTEND_URL=https://your-vercel-app.vercel.app
+```
+
+> **Note**: The backend automatically allows all `*.vercel.app` domains, but setting this explicitly helps with logging.
+
 ## Next Steps
 
 Once deployed:
@@ -263,11 +319,12 @@ Once deployed:
 2. ✅ Verify transcripts stream in real-time
 3. ✅ Check voice quality (should be natural)
 4. ✅ Monitor Railway logs for errors
-5. 🔄 Remove old Next.js API routes (optional)
+5. ✅ Verify frontend connects to backend correctly
 6. 🔄 Set up monitoring/alerting (optional)
 
 ## Support
 
 - Railway Docs: https://docs.railway.app
 - Railway Discord: https://discord.gg/railway
+- Vercel Docs: https://vercel.com/docs
 - VADR Issues: Create GitHub issue in your repo
