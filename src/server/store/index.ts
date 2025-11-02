@@ -1,11 +1,11 @@
-import { redis } from '@/lib/redis';
 import { InMemoryCallStore } from './in-memory-call-store';
-import { RedisCallStore } from './redis-call-store';
+import { prisma } from '@/lib/db';
+import { PrismaCallStore, prismaCallStore } from './prisma-call-store';
 import type { CallStore } from './types';
 
-export { InMemoryCallStore, RedisCallStore };
+export { InMemoryCallStore, PrismaCallStore };
 export * from './types';
 
-const store: CallStore = redis ? new RedisCallStore(redis) : new InMemoryCallStore();
+const store: CallStore = prismaCallStore ?? new InMemoryCallStore();
 
 export const callStore = store;

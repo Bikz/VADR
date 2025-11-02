@@ -85,12 +85,8 @@ Visit `http://localhost:3000` and try an example query!
    VOICE_AGENT_MODEL=gpt-4o-mini
    TWILIO_VOICE_NAME=Polly.Joanna
 
-   # Upstash Redis (shared call state)
-   UPSTASH_REDIS_REST_URL=https://us1-shiny-redis.upstash.io
-   UPSTASH_REDIS_REST_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
-
    # PlanetScale / Neon connection string
-   DATABASE_URL=mysql://username:password@host/dbname
+   DATABASE_URL=postgresql://username:password@host/dbname?sslmode=require
 
    # Deepgram (real-time STT)
    DEEPGRAM_API_KEY=dg-xxxxxxxxxxxxxxxxxxxxxxxx
@@ -117,7 +113,7 @@ Visit `http://localhost:3000` and try an example query!
 ### Service architecture
 
 - **CallService (`src/server/services/call-service.ts`)** owns Twilio orchestration, LLM turns, state transitions, and persistence hooks.
-- **CallStore (`src/server/store`)** auto-selects Upstash Redis when credentials are present, otherwise falls back to the in-memory store used in local dev.
+- **CallStore (`src/server/store`)** runs entirely on Prisma/Neon; local dev works without a database connection, but production should set `DATABASE_URL`.
 - **PlanetScale (via Prisma)** stores runs, calls, transcript turns, and metrics (`prisma/schema.prisma`).
 - Next.js API routes (`/api/start-calls`, `/api/twilio/*`, `/api/events`, `/api/calls/[id]`) remain thin adapters so migrating to a dedicated backend later is straightforward.
 - **Sentry (`sentry.*.config.ts`)** captures frontend & backend errors when the DSN is configured.

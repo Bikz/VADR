@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           console.error('[events] failed to poll run', error);
         } finally {
           if (active) {
-            setTimeout(poll, 1000);
+            setTimeout(poll, 3000);
           }
         }
       };
