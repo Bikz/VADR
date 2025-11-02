@@ -116,6 +116,8 @@ export default function Home() {
   const [locationName, setLocationName] = useState<string>('');
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(true);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   // Reverse geocode coordinates to get city name
   const reverseGeocode = async (lat: number, lng: number): Promise<string | null> => {
