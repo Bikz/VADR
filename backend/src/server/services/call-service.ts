@@ -289,9 +289,27 @@ class CallService {
     }
 
     await this.store.updateCallState(callId, 'completed');
-    
+
     // Enrich call data with Captain API after completion
     await this.enrichCompletedCall(callId);
+  }
+
+  async recordAgentPrompt(callId: string, text: string) {
+    const callSession = await this.store.getCall(callId);
+    if (!callSession) {
+      return;
+    }
+
+    const existingAiTurn = [...callSession.call.transcript]
+      .reverse()
+      .find((turn) => turn.speaker === 'ai');
+
+    if (existingAiTurn?.text.trim() === text.trim()) {
+      return;
+    }
+
+    const aiTurn = createTranscriptTurn(callId, 'ai', text);
+    await this.store.appendTranscript(callId, aiTurn);
   }
 
   async getRun(runId: string) {

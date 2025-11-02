@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Call } from '@/types';
 import { getStateColor, getSentimentColor } from '@/lib/call-style';
 import { Waveform } from './waveform';
+import { useCallAudio } from '@/hooks/use-call-audio';
 
 interface CallTileProps {
   call: Call;
@@ -21,6 +22,7 @@ interface CallTileProps {
 export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, compact = false }: CallTileProps) {
   const [duration, setDuration] = useState(call.duration ?? 0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     setDuration(call.duration ?? 0);
@@ -68,8 +70,14 @@ export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, co
   const emptyStatePadding = compact ? 'py-4 text-[0.7rem]' : 'py-8 text-xs';
   const transcriptText = compact ? 'p-2.5 text-xs leading-relaxed' : 'p-3 text-sm leading-relaxed';
 
+  useCallAudio(call.id, call.isListening && isHovered && call.state === 'connected');
+
   return (
-    <Card className={`flex flex-col overflow-hidden border border-gray-200 bg-white shadow-sm ${cardHeight}`}>
+    <Card
+      className={`flex flex-col overflow-hidden border border-gray-200 bg-white shadow-sm ${cardHeight}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div className={`border-b border-gray-200 bg-white ${headerSpacing}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">

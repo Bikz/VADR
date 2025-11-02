@@ -1,22 +1,58 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { SocketStream } from '@fastify/websocket';
 import { VoiceResponse } from '../lib/twilio.js';
 import { env, resolvePublicBaseUrl } from '../lib/env.js';
 import { callService } from '../server/services/call-service.js';
 import type { GatherAttributes, SayAttributes } from 'twilio/lib/twiml/VoiceResponse';
+import { callAudioBroker } from '../server/services/audio-broker.js';
 
 const MAX_CONVERSATION_TURNS = 10;
-const MIN_SPEECH_CONFIDENCE = 0.3;
+const MIN_SPEECH_CONFIDENCE = 0.2;
 const CHARS_PER_SECOND = 15;
 const BASE_SPEECH_TIMEOUT = 5;
 const FALLBACK_TIMEOUT = 3;
 
-function parseFormBody(body: string): Record<string, string> {
-  const params = new URLSearchParams(body);
-  const entries: Record<string, string> = {};
-  params.forEach((value, key) => {
-    entries[key] = value;
-  });
-  return entries;
+function parseFormBody(body: unknown): Record<string, string> {
+  if (!body) {
+    return {};
+  }
+
+  if (typeof body === 'string') {
+    const params = new URLSearchParams(body);
+    const entries: Record<string, string> = {};
+    params.forEach((value, key) => {
+      entries[key] = value;
+    });
+    return entries;
+  }
+
+  if (body instanceof URLSearchParams) {
+    const entries: Record<string, string> = {};
+    body.forEach((value, key) => {
+      entries[key] = value;
+    });
+    return entries;
+  }
+
+  if (Buffer.isBuffer(body)) {
+    return parseFormBody(body.toString('utf8'));
+  }
+
+  if (typeof body === 'object') {
+    const entries: Record<string, string> = {};
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        entries[key] = value[0] ? String(value[0]) : '';
+      } else if (value === undefined || value === null) {
+        entries[key] = '';
+      } else {
+        entries[key] = String(value);
+      }
+    }
+    return entries;
+  }
+
+  return {};
 }
 
 function estimateTTSDuration(text: string): number {
@@ -29,6 +65,25 @@ function calculateSpeechTimeout(ttsText: string): number {
   return BASE_SPEECH_TIMEOUT + ttsDuration;
 }
 
+function toWebsocketUrl(baseUrl: string) {
+  if (baseUrl.startsWith('https://')) {
+    return baseUrl.replace('https://', 'wss://');
+  }
+  if (baseUrl.startsWith('http://')) {
+    return baseUrl.replace('http://', 'ws://');
+  }
+  return baseUrl;
+}
+
+function attachStreaming(response: VoiceResponse, streamUrl: string, callId: string) {
+  const start = response.start();
+  start.stream({
+    url: streamUrl,
+    track: 'both_tracks',
+    name: callId,
+  });
+}
+
 function buildLoopingResponse(
   runId: string,
   callId: string,
@@ -37,6 +92,10 @@ function buildLoopingResponse(
   gatherUrl: string
 ) {
   const response = new VoiceResponse();
+
+  const baseUrl = resolvePublicBaseUrl();
+  const streamUrl = `${toWebsocketUrl(baseUrl)}/api/twilio/stream?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
+  attachStreaming(response, streamUrl, callId);
 
   const speechTimeout = calculateSpeechTimeout(replyText);
   const gatherOptions: GatherAttributes = {
@@ -91,8 +150,10 @@ async function buildGatherResponse(runId: string, callId: string) {
   const voice = env.twilioVoiceName();
   const baseUrl = resolvePublicBaseUrl();
   const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
+  const streamUrl = `${toWebsocketUrl(baseUrl)}/api/twilio/stream?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
 
   const response = new VoiceResponse();
+  attachStreaming(response, streamUrl, callId);
   const gatherOptions: GatherAttributes = {
     input: ['speech', 'dtmf'],
     speechTimeout: '5',
@@ -117,6 +178,8 @@ async function buildGatherResponse(runId: string, callId: string) {
     gather.say(openingLine);
     response.say('I did not catch that. Let me try again.');
   }
+
+  await callService.recordAgentPrompt(callId, openingLine);
   response.redirect(gatherUrl);
 
   return response;
@@ -131,8 +194,7 @@ export async function twilioRoutes(fastify: FastifyInstance) {
       return reply.code(400).send('Missing identifiers');
     }
 
-    const rawBody = typeof request.body === 'string' ? request.body : '';
-    const form = parseFormBody(rawBody);
+    const form = parseFormBody(request.body);
     const speechResult = form.SpeechResult?.trim();
     const confidence = form.Confidence ? parseFloat(form.Confidence) : 1.0;
     const callSid = form.CallSid;
@@ -247,6 +309,25 @@ export async function twilioRoutes(fastify: FastifyInstance) {
     });
   });
 
+  fastify.get('/stream', { websocket: true }, (connection: SocketStream, request) => {
+    const { callId, runId } = request.query as { callId?: string; runId?: string };
+
+    if (!callId || !runId) {
+      connection.socket.close(1008, 'Missing identifiers');
+      return;
+    }
+
+    console.log('[twilio-stream] connected', { callId, runId });
+
+    connection.socket.on('message', (payload) => {
+      callAudioBroker.handleTwilioPayload(callId, payload);
+    });
+
+    connection.socket.on('close', () => {
+      console.log('[twilio-stream] disconnected', { callId, runId });
+    });
+  });
+
   // POST /api/twilio/status - Handle status callback
   fastify.post('/status', async (request: FastifyRequest, reply: FastifyReply) => {
     const { runId, callId } = request.query as { runId?: string; callId?: string };
@@ -255,8 +336,7 @@ export async function twilioRoutes(fastify: FastifyInstance) {
       return reply.code(400).send('Missing identifiers');
     }
 
-    const rawBody = typeof request.body === 'string' ? request.body : '';
-    const form = parseFormBody(rawBody);
+    const form = parseFormBody(request.body);
     const callStatus = form.CallStatus;
     const answeredBy = form.AnsweredBy;
     const callSid = form.CallSid;
