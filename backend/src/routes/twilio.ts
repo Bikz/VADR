@@ -89,7 +89,8 @@ function buildLoopingResponse(
   callId: string,
   replyText: string,
   voice: string | null,
-  gatherUrl: string
+  gatherUrl: string,
+  options?: { speakResponse?: boolean }
 ) {
   const response = new VoiceResponse();
 
@@ -98,6 +99,7 @@ function buildLoopingResponse(
   attachStreaming(response, streamUrl, callId);
 
   const speechTimeout = calculateSpeechTimeout(replyText);
+  const speakResponse = options?.speakResponse ?? true;
   const gatherOptions: GatherAttributes = {
     input: ['speech', 'dtmf'],
     speechTimeout: speechTimeout.toString(),
@@ -111,13 +113,15 @@ function buildLoopingResponse(
 
   const gather = response.gather(gatherOptions);
 
-  if (voice) {
-    const sayVoice = voice as SayAttributes['voice'];
-    gather.say({ voice: sayVoice }, replyText);
-    response.say({ voice: sayVoice }, 'I did not catch that. Let me try again.');
-  } else {
-    gather.say(replyText);
-    response.say('I did not catch that. Let me try again.');
+  if (speakResponse) {
+    if (voice) {
+      const sayVoice = voice as SayAttributes['voice'];
+      gather.say({ voice: sayVoice }, replyText);
+      response.say({ voice: sayVoice }, 'I did not catch that. Let me try again.');
+    } else {
+      gather.say(replyText);
+      response.say('I did not catch that. Let me try again.');
+    }
   }
 
   response.redirect(gatherUrl);
@@ -127,6 +131,7 @@ function buildLoopingResponse(
     callId,
     replyText,
     speechTimeout,
+    speakResponse,
   });
 
   return response;
@@ -251,7 +256,7 @@ export async function twilioRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const { replyText, shouldTerminate } = await callService.handleGather({
+      const { replyText, shouldTerminate, allowAgentSpeech } = await callService.handleGather({
         runId,
         callId,
         speechResult: validSpeech,
@@ -267,7 +272,9 @@ export async function twilioRoutes(fastify: FastifyInstance) {
         return reply.type('text/xml').send(response.toString());
       }
 
-      const response = buildLoopingResponse(runId, callId, replyText, voice, gatherUrl);
+      const response = buildLoopingResponse(runId, callId, replyText, voice, gatherUrl, {
+        speakResponse: allowAgentSpeech,
+      });
       return reply.type('text/xml').send(response.toString());
     } catch (error) {
       console.error('[gather] error handling webhook', {
