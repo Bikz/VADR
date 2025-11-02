@@ -1,0 +1,55 @@
+const cache = new Map<string, string | undefined>();
+
+function readEnv(key: string, required = true): string | undefined {
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+
+  const value = process.env[key];
+  cache.set(key, value);
+
+  if (!value && required) {
+    console.warn(`Missing expected environment variable "${key}".`);
+  }
+
+  return value;
+}
+
+export const env = {
+  twilioAccountSid: () => readEnv('TWILIO_ACCOUNT_SID'),
+  twilioAuthToken: () => readEnv('TWILIO_AUTH_TOKEN'),
+  twilioPhoneNumber: () => readEnv('TWILIO_PHONE_NUMBER'),
+  publicBaseUrl: () => readEnv('PUBLIC_BASE_URL', false) ?? readEnv('NEXT_PUBLIC_BASE_URL', false),
+  openAiApiKey: () => readEnv('OPENAI_API_KEY'),
+  openAiModel: () => readEnv('VOICE_AGENT_MODEL', false) ?? 'gpt-4o-mini',
+  twilioVoiceName: () => readEnv('TWILIO_VOICE_NAME', false) ?? 'Polly.Joanna',
+};
+
+export function assertEnv() {
+  const required: Array<[string, () => string | undefined]> = [
+    ['TWILIO_ACCOUNT_SID', env.twilioAccountSid],
+    ['TWILIO_AUTH_TOKEN', env.twilioAuthToken],
+    ['TWILIO_PHONE_NUMBER', env.twilioPhoneNumber],
+    ['OPENAI_API_KEY', env.openAiApiKey],
+  ];
+
+  const missing = required
+    .map(([key, getter]) => (!getter() ? key : undefined))
+    .filter((value): value is string => Boolean(value));
+
+  if (missing.length) {
+    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
+  }
+}
+
+export function resolvePublicBaseUrl() {
+  const explicit = env.publicBaseUrl();
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL.replace(/\/$/, '')}`;
+  }
+
+  return 'http://localhost:3000';
+}
+

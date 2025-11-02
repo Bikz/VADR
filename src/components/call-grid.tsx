@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Call, CallState, VADRRun } from '@/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Call, VADRRun } from '@/types';
 import { CallTile } from './call-tile';
-import { generateTranscriptTurn, getRandomTranscriptSet } from '@/lib/mock-data';
 
 interface CallGridProps {
   run: VADRRun;
@@ -11,223 +10,134 @@ interface CallGridProps {
   onComplete?: (calls: Call[]) => void;
 }
 
-const TERMINAL_STATES: CallState[] = ['completed', 'failed', 'voicemail'];
-
-const isTerminal = (call: Call) => TERMINAL_STATES.includes(call.state);
+type EventPayload = { type: 'snapshot'; run: VADRRun };
 
 export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
-  const [calls, setCalls] = useState<Call[]>(run.calls);
+  const [runState, setRunState] = useState<VADRRun>(run);
+  const [callsById, setCallsById] = useState<Record<string, Call>>(
+    Object.fromEntries(run.calls.map((call) => [call.id, call]))
+  );
+  const orderRef = useRef<string[]>(run.calls.map((call) => call.id));
   const completionRef = useRef(run.status === 'completed');
-  const signatureRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setCalls(run.calls);
+    setRunState(run);
+    setCallsById(Object.fromEntries(run.calls.map((call) => [call.id, call])));
+    orderRef.current = run.calls.map((call) => call.id);
     completionRef.current = run.status === 'completed';
-    signatureRef.current = null;
-  }, [run.id]);
-
-  const updateCalls = useCallback(
-    (updater: (previous: Call[]) => Call[]) => {
-      setCalls(prev => {
-        const next = updater(prev);
-        return next === prev ? prev : next;
-      });
-    },
-    []
-  );
-
-  const updateCallState = useCallback(
-    (callId: string, newState: CallState, extra: Partial<Call> = {}) => {
-      updateCalls(prev =>
-        prev.map(call => {
-          if (call.id !== callId) return call;
-
-          const timingUpdates: Partial<Call> = {};
-          if (newState === 'connected' && !call.startedAt) {
-            timingUpdates.startedAt = Date.now();
-          }
-          if (TERMINAL_STATES.includes(newState)) {
-            timingUpdates.endedAt = Date.now();
-          }
-
-          return { ...call, ...extra, ...timingUpdates, state: newState };
-        })
-      );
-    },
-    [updateCalls]
-  );
-
-  const startTranscriptSimulation = useCallback(
-    (callId: string) => {
-      const transcriptSet = getRandomTranscriptSet();
-      const baseTime = Date.now();
-      let turnIndex = 0;
-      let conversationIndex = 0;
-
-      const addNextTurn = () => {
-        if (conversationIndex >= transcriptSet[0].texts.length) {
-          setTimeout(() => updateCallState(callId, 'completed'), 800);
-          return;
-        }
-
-        const humanTurn = generateTranscriptTurn(
-          callId,
-          turnIndex++,
-          'human',
-          transcriptSet[0].texts[conversationIndex],
-          baseTime
-        );
-
-        updateCalls(prev =>
-          prev.map(call =>
-            call.id === callId
-              ? {
-                  ...call,
-                  transcript: [...call.transcript, humanTurn],
-                  duration: Math.floor((Date.now() - baseTime) / 1000)
-                }
-              : call
-          )
-        );
-
-        setTimeout(() => {
-          const aiTurn = generateTranscriptTurn(
-            callId,
-            turnIndex++,
-            'ai',
-            transcriptSet[1].texts[conversationIndex],
-            baseTime
-          );
-
-          updateCalls(prev =>
-            prev.map(call =>
-              call.id === callId
-                ? {
-                    ...call,
-                    transcript: [...call.transcript, aiTurn],
-                    duration: Math.floor((Date.now() - baseTime) / 1000),
-                    sentiment: conversationIndex >= 2 ? 'positive' : 'neutral'
-                  }
-                : call
-            )
-          );
-
-          conversationIndex++;
-          if (conversationIndex < transcriptSet[0].texts.length) {
-            setTimeout(addNextTurn, 2000 + Math.random() * 1000);
-          } else {
-            setTimeout(() => updateCallState(callId, 'completed'), 1500);
-          }
-        }, 1400 + Math.random() * 800);
-      };
-
-      setTimeout(addNextTurn, 600);
-    },
-    [updateCallState, updateCalls]
-  );
+  }, [run]);
 
   useEffect(() => {
-    if (run.status === 'completed') {
-      return;
-    }
+    const source = new EventSource(`/api/events?runId=${run.id}`);
 
-    const timers: NodeJS.Timeout[] = [];
+    source.onmessage = (message) => {
+      if (!message.data) return;
+      try {
+        const payload = JSON.parse(message.data) as EventPayload;
+        if (payload.type === 'snapshot') {
+          setRunState(payload.run);
+          onRunUpdate?.(payload.run);
 
-    const kickoff = setTimeout(() => {
-      updateCalls(prev =>
-        prev.map((call, index) => {
-          if (call.state !== 'idle') {
-            return call;
+          setCallsById(
+            Object.fromEntries(payload.run.calls.map((call) => [call.id, call]))
+          );
+          orderRef.current = payload.run.calls.map((call) => call.id);
+
+          if (payload.run.status === 'completed' && !completionRef.current) {
+            completionRef.current = true;
+            onComplete?.(payload.run.calls);
+          } else if (payload.run.status !== 'completed') {
+            completionRef.current = false;
           }
+        }
+      } catch (error) {
+        console.error('Failed to parse event payload', error);
+      }
+    };
 
-          const startedAt = Date.now();
-
-          const ringingTimer = setTimeout(() => {
-            updateCallState(call.id, 'ringing');
-
-            const outcomeTimer = setTimeout(() => {
-              const connects = Math.random() > 0.2;
-              if (connects) {
-                updateCallState(call.id, 'connected');
-                startTranscriptSimulation(call.id);
-              } else {
-                updateCallState(call.id, 'voicemail');
-              }
-            }, 1800 + index * 350);
-
-            timers.push(outcomeTimer);
-          }, 1300 + index * 250);
-
-          timers.push(ringingTimer);
-
-          return { ...call, state: 'dialing', startedAt };
-        })
-      );
-    }, 500);
-
-    timers.push(kickoff);
+    source.onerror = () => {
+      source.close();
+    };
 
     return () => {
-      timers.forEach(clearTimeout);
+      completionRef.current = runState.status === 'completed';
+      source.close();
     };
-  }, [run.id, run.status, startTranscriptSimulation, updateCallState, updateCalls]);
+  }, [onComplete, onRunUpdate, run.id, runState.status]);
 
-  useEffect(() => {
-    const status = calls.every(isTerminal) ? 'completed' : 'calling';
+  const orderedCalls = useMemo(() => {
+    const entries = orderRef.current.map((id) => callsById[id]).filter(Boolean);
+    return entries;
+  }, [callsById]);
 
-    const signature = calls
-      .map(call =>
-        [
-          call.id,
-          call.state,
-          call.transcript.length,
-          call.duration,
-          call.sentiment,
-          call.startedAt ?? 0,
-          call.endedAt ?? 0
-        ].join('-')
-      )
-      .join('|');
+  const optimisticUpdate = useCallback((callId: string, updates: Partial<Call>) => {
+    setCallsById((previous) => {
+      const existing = previous[callId];
+      if (!existing) return previous;
+      return {
+        ...previous,
+        [callId]: { ...existing, ...updates },
+      };
+    });
+  }, []);
 
-    const shouldEmit =
-      signature !== signatureRef.current || status !== run.status;
-
-    if (shouldEmit) {
-      signatureRef.current = signature;
-
-      onRunUpdate?.({
-        id: run.id,
-        query: run.query,
-        createdBy: run.createdBy,
-        startedAt: run.startedAt,
-        status,
-        calls
-      });
-
-      if (status === 'completed' && !completionRef.current) {
-        completionRef.current = true;
-        onComplete?.(calls);
+  const handleToggleListen = useCallback(
+    async (call: Call, nextState: boolean) => {
+      optimisticUpdate(call.id, { isListening: nextState });
+      try {
+        await fetch(`/api/calls/${call.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isListening: nextState }),
+        });
+      } catch (error) {
+        console.error('Failed to toggle listen state', error);
       }
+    },
+    [optimisticUpdate]
+  );
 
-      if (status !== 'completed') {
-        completionRef.current = false;
+  const handleToggleTakeOver = useCallback(
+    async (call: Call, nextState: boolean) => {
+      optimisticUpdate(call.id, { isTakenOver: nextState });
+      try {
+        await fetch(`/api/calls/${call.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isTakenOver: nextState }),
+        });
+      } catch (error) {
+        console.error('Failed to toggle takeover', error);
       }
-    }
-  }, [calls, onComplete, onRunUpdate, run.createdBy, run.id, run.query, run.startedAt, run.status]);
+    },
+    [optimisticUpdate]
+  );
+
+  const handleEndCall = useCallback(
+    async (call: Call) => {
+      optimisticUpdate(call.id, { state: 'completed' });
+      try {
+        await fetch(`/api/calls/${call.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endCall: true }),
+        });
+      } catch (error) {
+        console.error('Failed to end call', error);
+      }
+    },
+    [optimisticUpdate]
+  );
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 auto-rows-[1fr]">
-      {calls.map(call => (
+      {orderedCalls.map((call) => (
         <CallTile
           key={call.id}
           call={call}
-          onUpdate={updates =>
-            updateCalls(prev =>
-              prev.map(existing =>
-                existing.id === call.id ? { ...existing, ...updates } : existing
-              )
-            )
-          }
+          onToggleListen={handleToggleListen}
+          onToggleTakeOver={handleToggleTakeOver}
+          onEndCall={handleEndCall}
           compact
         />
       ))}

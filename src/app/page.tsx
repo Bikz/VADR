@@ -24,6 +24,24 @@ interface RunSummary {
   nextSteps: string[];
 }
 
+function getManualTestLead(): Lead | null {
+  const overridePhone = process.env.NEXT_PUBLIC_TEST_PHONE;
+  if (!overridePhone) return null;
+
+  const overrideName = process.env.NEXT_PUBLIC_TEST_NAME ?? 'Test Call Target';
+
+  return {
+    id: 'test-lead',
+    name: overrideName,
+    phone: overridePhone,
+    source: 'Manual',
+    confidence: 1,
+    rating: 5,
+    reviewCount: 1,
+    description: 'Manually configured test recipient',
+  } satisfies Lead;
+}
+
 function generateRunSummary(query: string, calls: Call[]): RunSummary {
   if (!calls.length) {
     return {
@@ -235,7 +253,7 @@ export default function Home() {
     );
   };
 
-  const handleStartCalls = () => {
+  const handleStartCalls = async () => {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
@@ -459,13 +477,16 @@ export default function Home() {
           </Button>
           <Button
             onClick={handleStartCalls}
-            disabled={!selectedCount}
+            disabled={!selectedCount || isLaunching}
             className="rounded-full bg-black px-6 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
           >
-            Go · {selectedCount} calls
+            {isLaunching ? 'Launching calls…' : `Go · ${selectedCount} calls`}
           </Button>
         </div>
       </div>
+      {launchError && (
+        <p className="mt-3 text-sm text-red-500">{launchError}</p>
+      )}
     </div>
   );
 

@@ -26,6 +26,7 @@ export interface Lead {
   phone: string;
   source: string;
   url?: string;
+  address?: string;
   confidence: number;
   rating: number;
   reviewCount: number;

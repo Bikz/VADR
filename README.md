@@ -55,6 +55,15 @@ cp .env.example .env.local
 # Run development server
 bun run dev
 
+# Pre-deploy sanity check (typecheck + lint + production build)
+bun run verify
+
+# Generate Prisma client after schema changes
+bun run prisma:generate
+
+# Push schema to PlanetScale/Neon when connected
+bun run prisma:push
+
 # Build for production
 bun run build
 ```
