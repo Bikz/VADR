@@ -12,23 +12,29 @@ import { Waveform } from './waveform';
 
 interface CallTileProps {
   call: Call;
-  onUpdate: (updates: Partial<Call>) => void;
+  onToggleListen: (call: Call, nextState: boolean) => Promise<void> | void;
+  onToggleTakeOver: (call: Call, nextState: boolean) => Promise<void> | void;
+  onEndCall: (call: Call) => Promise<void> | void;
   compact?: boolean;
 }
 
-export function CallTile({ call, onUpdate, compact = false }: CallTileProps) {
-  const [duration, setDuration] = useState(0);
+export function CallTile({ call, onToggleListen, onToggleTakeOver, onEndCall, compact = false }: CallTileProps) {
+  const [duration, setDuration] = useState(call.duration ?? 0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (call.state === 'connected' || call.state === 'ringing') {
-      const interval = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
+    setDuration(call.duration ?? 0);
+  }, [call.duration, call.id]);
 
+  useEffect(() => {
+    if (call.state === 'connected' && call.startedAt) {
+      const startedAt = call.startedAt;
+      const interval = setInterval(() => {
+        setDuration(Math.round((Date.now() - startedAt) / 1000));
+      }, 1000);
       return () => clearInterval(interval);
     }
-  }, [call.state]);
+  }, [call.startedAt, call.state]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -43,15 +49,15 @@ export function CallTile({ call, onUpdate, compact = false }: CallTileProps) {
   };
 
   const handleTakeOver = () => {
-    onUpdate({ isTakenOver: !call.isTakenOver });
+    onToggleTakeOver(call, !call.isTakenOver);
   };
 
   const handleListen = () => {
-    onUpdate({ isListening: !call.isListening });
+    onToggleListen(call, !call.isListening);
   };
 
   const handleEndCall = () => {
-    onUpdate({ state: 'completed' });
+    onEndCall(call);
   };
 
   const cardHeight = compact ? 'h-[340px]' : 'h-[500px]';

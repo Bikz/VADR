@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
 import type { Call, Lead, VADRRun } from '@/types';
-import { generateMockLeads, createInitialCall } from '@/lib/mock-data';
+import { generateMockLeads, mockCallPrep } from '@/lib/mock-data';
 
 const EXAMPLE_QUERIES = [
   'Find 5 salons near me with same-day appointments under $60',
@@ -89,6 +89,8 @@ export default function Home() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<Record<string, boolean>>({});
   const [currentRun, setCurrentRun] = useState<VADRRun | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const selectedCount = useMemo(
     () => candidates.filter(lead => selectedLeadIds[lead.id]).length,
@@ -124,22 +126,40 @@ export default function Home() {
     );
   };
 
-  const handleStartCalls = () => {
+  const handleStartCalls = async () => {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
-    const calls = selectedLeads.map(createInitialCall);
-    const run: VADRRun = {
-      id: `run-${Date.now()}`,
-      query,
-      createdBy: 'demo-user',
-      startedAt: Date.now(),
-      status: 'calling',
-      calls
-    };
+    const runId = `run-${Date.now()}`;
 
-    setCurrentRun(run);
-    setStage('calling');
+    setIsLaunching(true);
+    setLaunchError(null);
+
+    try {
+      const response = await fetch('/api/start-calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          runId,
+          query,
+          leads: selectedLeads,
+          prep: mockCallPrep
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Failed to start calls');
+      }
+
+      setCurrentRun(payload.run as VADRRun);
+      setStage('calling');
+    } catch (error) {
+      console.error(error);
+      setLaunchError(error instanceof Error ? error.message : 'Unable to start calls');
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   const handleRunUpdate = (updatedRun: VADRRun) => {
@@ -167,6 +187,8 @@ export default function Home() {
     setSelectedLeadIds({});
     setCurrentRun(null);
     setSummary(null);
+    setLaunchError(null);
+    setIsLaunching(false);
     setStage('search');
   };
 
@@ -305,13 +327,16 @@ export default function Home() {
           </Button>
           <Button
             onClick={handleStartCalls}
-            disabled={!selectedCount}
+            disabled={!selectedCount || isLaunching}
             className="rounded-full bg-black px-6 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
           >
-            Go · {selectedCount} calls
+            {isLaunching ? 'Launching calls…' : `Go · ${selectedCount} calls`}
           </Button>
         </div>
       </div>
+      {launchError && (
+        <p className="mt-3 text-sm text-red-500">{launchError}</p>
+      )}
     </div>
   );
 

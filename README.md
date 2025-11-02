@@ -56,6 +56,62 @@ bun run build
 
 Visit `http://localhost:3000` and try an example query!
 
+## 🔧 Telephony Setup (Track 1)
+
+1. Install the new dependencies (Twilio + OpenAI SDKs):
+
+   ```bash
+   bun install
+   ```
+
+2. Create a `.env.local` and provide the required credentials:
+
+   ```bash
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=your_auth_token
+   TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+   OPENAI_API_KEY=sk-...
+   PUBLIC_BASE_URL=https://your-ngrok-or-production-host
+   # Optional overrides
+   VOICE_AGENT_MODEL=gpt-4o-mini
+   TWILIO_VOICE_NAME=Polly.Joanna
+   ```
+
+   `PUBLIC_BASE_URL` must be reachable by Twilio (use Ngrok during local development).
+
+3. Give the outbound number call permissions in the Twilio console (Voice > Settings > Geo Permissions) and verify the caller ID if you are using Trial credentials.
+
+4. Start the dev server: `bun run dev` and expose it via Ngrok so Twilio can reach the `/api/twilio/*` webhooks.
+
+5. Initiate a run from the UI. The dashboard now:
+
+   - Calls `/api/start-calls` which spins up real Twilio outbound calls into a gather-loop powered by GPT + Twilio TTS.
+   - Streams call state + transcripts over Server-Sent Events (`/api/events?runId=...`) so tiles update in near-real time.
+   - Sends transcript turns to the LLM, generates agent replies, and plays them back with Twilio’s `<Gather>` loop.
+
+6. Use the “Listen” and “Take Over” toggles to flag intent to monitor/join. (The UI state syncs server-side; injecting the user audio leg via Twilio Client is queued in TODOs below.)
+
+### Service architecture
+
+- **CallService (`src/server/services/call-service.ts`)** owns Twilio orchestration, LLM turns, and state transitions.
+- **CallStore (`src/server/store`)** currently uses an in-memory implementation; swap in Redis/Postgres later without touching the routes.
+- Next.js API routes (`/api/start-calls`, `/api/twilio/*`, `/api/events`, `/api/calls/[id]`) now just delegate to the service layer so migrating to Fastify or workers is a matter of reusing the same modules.
+
+### Manual test flow
+
+1. Add your mobile number as one of the mock leads so you can answer.
+2. Run `bun run dev`, tunnel with Ngrok, and update `PUBLIC_BASE_URL` to the tunnel URL.
+3. From the dashboard, run a query, keep the default leads selected, and click “Go”.
+4. When you answer the call, speak a few short phrases. Watch the transcript panel update per turn.
+5. Confirm the agent replies using Twilio TTS and the tile state transitions to `completed` when you hang up.
+
+### Remaining TODOs / Next steps
+
+- Switch from the `<Gather>` loop to full-duplex Twilio Media Streams + Deepgram for word-by-word transcripts.
+- Wire the “Take Over” control into a Twilio Voice Client/WebRTC participant so the operator can actually barge in.
+- Persist run + call state to durable storage (currently in-memory).
+- Add analytics + guardrail evaluation hooks (e.g., COVAL) before production rollout.
+
 ## 📋 Example Queries
 
 - "Find 5 salons near me with same-day appointments under $60"
