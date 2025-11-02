@@ -212,6 +212,7 @@ export default function Home() {
   const [locationName, setLocationName] = useState<string>('');
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<GeolocationPermissionState | 'unknown'>('unknown');
 
@@ -394,10 +395,33 @@ export default function Home() {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
-    // For now, just forward to the call page with the selected businesses
-    const businessesJson = encodeURIComponent(JSON.stringify(selectedLeads));
-    const queryParam = encodeURIComponent(query);
-    router.push(`/calls?businesses=${businessesJson}&query=${queryParam}`);
+    setIsLaunching(true);
+    setLaunchError(null);
+
+    try {
+      const response = await apiClient.startCallRun({
+        query,
+        leads: selectedLeads,
+        prep: buildCallPrep(query, selectedLeads),
+        createdBy: 'demo-user',
+      });
+
+      const normalizedRun: VADRRun = {
+        ...response.run,
+        id: response.run.id ?? response.runId,
+      };
+
+      setCurrentRun(normalizedRun);
+      setStage('calling');
+      
+      // Navigate to calls page with the runId
+      router.push(`/calls?runId=${normalizedRun.id}`);
+    } catch (error) {
+      console.error('Failed to launch calls', error);
+      setLaunchError(error instanceof Error ? error.message : 'Failed to launch calls. Please try again.');
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   const handleRunUpdate = (updatedRun: VADRRun) => {
@@ -658,10 +682,10 @@ export default function Home() {
           </Button>
           <Button
             onClick={handleStartCalls}
-            disabled={!selectedCount}
+            disabled={!selectedCount || isLaunching}
             className="rounded-full bg-[#523429] px-8 py-3 font-inter text-base font-semibold text-white hover:bg-[#523429]/90 disabled:cursor-not-allowed disabled:bg-[#523429]/30"
           >
-            {`Start ${selectedCount} calls`}
+            {isLaunching ? 'Launching calls…' : `Start ${selectedCount} calls`}
           </Button>
         </div>
       </div>
