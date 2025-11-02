@@ -47,6 +47,11 @@ User Query → Web Search → Find Phone Numbers → 6 Parallel Calls → Live T
 # Install dependencies
 bun install
 
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local and add your Metorial API key:
+# METORIAL_API_KEY=your-metorial-api-key-here
+
 # Run development server
 bun run dev
 
@@ -55,6 +60,20 @@ bun run build
 ```
 
 Visit `http://localhost:3000` and try an example query!
+
+### Environment Variables
+
+Create a `.env.local` file in the root directory with:
+
+```env
+METORIAL_API_KEY=your-metorial-api-key-here
+```
+
+Get your Metorial API key from: https://metorial.com/
+
+**Note**: This project uses Exa (neural web search) via Metorial's MCP platform. Metorial provides an integration layer that connects to Exa and other search services.
+
+**Important**: You must configure your Exa API key in your Metorial deployment settings. Go to your Metorial dashboard, find the Exa deployment (ID: `svd_0mhhcb7z0wvg34K6xJugat`), and add your Exa API key there. The Exa API key cannot be passed via environment variables - it must be configured in the Metorial deployment.
 
 ## 📋 Example Queries
 
