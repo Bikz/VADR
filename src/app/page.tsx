@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { Sparkles, Search } from 'lucide-react';
+import { Sparkles, Search, Plus, ArrowUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
@@ -15,6 +15,13 @@ const EXAMPLE_QUERIES = [
   'massage therapists available today',
   'barbershops that accept walk-ins',
   'tailors offering alterations',
+];
+
+const SUGGESTION_PROMPTS = [
+  'Find 5 salons near me accepting walk-ins today for under $60',
+  'Get quotes for 3 drywall contractors available this week',
+  'Find a couples massage for next Friday close to the downtown Hilton in LA',
+  'Book a 5 person reservation for a restaurant tomorrow night. Make sure they have dishes with no egg in them.',
 ];
 
 type Stage = 'search' | 'review' | 'calling' | 'summary';
@@ -337,121 +344,130 @@ export default function Home() {
   };
 
   const renderSearchStage = () => (
-    <div className="mx-auto flex min-h-[calc(100vh-200px)] w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 text-center">
-      <div className="select-none text-6xl font-semibold tracking-tight">
-        <span className="text-gray-900">V</span>
-        <span className="text-gray-900">A</span>
-        <span className="text-gray-900">D</span>
-        <span className="text-gray-900">R</span>
-      </div>
+    <div className="min-h-screen bg-[#F4E4CB] flex flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-4xl flex flex-col items-center gap-12">
+        {/* Logo and Brand */}
+        <div className="flex items-center gap-4">
+          <div className="relative w-[74px] h-[74px]">
+            <svg width="74" height="74" viewBox="0 0 74 74" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="37" cy="37" r="37" fill="#D4A574"/>
+              <circle cx="37" cy="37" r="28" fill="#8B5E3C"/>
+              <path d="M20 37C20 27.6 27.6 20 37 20C46.4 20 54 27.6 54 37C54 46.4 46.4 54 37 54" stroke="#F4E4CB" strokeWidth="3"/>
+            </svg>
+          </div>
+          <h1 className="text-[82px] font-normal tracking-[-3.27px] leading-none text-[#523429]" style={{ fontFamily: 'Kodchasan, Inter, -apple-system, sans-serif' }}>
+            TARA
+          </h1>
+        </div>
 
-      <div className="w-full max-w-2xl space-y-6">
-        {/* Location status */}
-        <div className="flex flex-col gap-3">
-          {isRequestingLocation ? (
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-              <span>Getting your precise location...</span>
-            </div>
-          ) : userLocation ? (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-sm text-gray-600">
-                📍 Searching near: <span className="font-medium text-gray-900">{locationName || 'Your location'}</span>
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-gray-500 hover:text-gray-900"
-                onClick={handleRequestLocation}
-              >
-                Refresh location
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-center">
-              {locationError ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {locationError}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600">Click below to let VADR tailor results to where you are.</p>
-              )}
+        <h2 className="text-[50px] font-medium tracking-[-2px] leading-none text-[#513529]">
+          How can I help?
+        </h2>
+
+        {/* Location status - subtle integration */}
+        {isRequestingLocation ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-[#523429]/70">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#523429]/30 border-t-[#523429]" />
+            <span>Getting your location...</span>
+          </div>
+        ) : !userLocation && (
+          <div className="flex flex-col items-center gap-2">
+            {locationError ? (
+              <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {locationError}
+              </div>
+            ) : (
               <Button
                 onClick={handleRequestLocation}
                 disabled={isRequestingLocation}
                 size="sm"
-                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                className="rounded-full bg-[#523429] px-4 py-2 text-sm font-semibold text-white hover:bg-[#523429]/90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
               >
-                Use my location
+                Enable location
               </Button>
-              {permissionState === 'denied' && (
-                <p className="text-xs text-gray-500">
-                  Location access is blocked. Enable it in your browser settings and click the button again.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Search bar */}
-        <div className="group relative flex items-center rounded-full border border-gray-200 bg-white px-5 py-3 shadow-sm hover:shadow md:px-6">
-          <Search className={`mr-3 h-5 w-5 ${isSearching ? 'text-gray-300' : 'text-gray-400'}`} />
-          <Input
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            onKeyDown={event => event.key === 'Enter' && !isSearching && userLocation && handleSearch(query)}
-            placeholder="Enter your search query (e.g., 'hair salons with same-day appointments')"
-            disabled={isSearching || isRequestingLocation || !userLocation}
-            className="h-8 flex-1 border-0 p-0 text-base placeholder:text-gray-400 focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          <div className="ml-3 flex items-center gap-2 text-gray-400">
-            {isSearching ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
-            ) : (
-              <span className="text-lg" aria-hidden>
-                🎤
-              </span>
             )}
+          </div>
+        )}
+
+        {/* Search input */}
+        <div className="w-full relative">
+          <div className="absolute inset-0 rounded-[77px] bg-[#EDD2B0]" />
+          <div className="absolute inset-0 rounded-[77px] border-[3px] border-[#523429]" />
+          
+          <div className="relative flex items-center gap-3 px-5 py-4">
+            <button 
+              className="flex-shrink-0 flex items-center justify-center w-[45px] h-[45px] rounded-full bg-[#F4E4CB] hover:bg-[#F4E4CB]/80 transition-all"
+              aria-label="Add attachment"
+            >
+              <Plus className="w-6 h-6 text-[#523429]" strokeWidth={3} />
+            </button>
+
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && query.trim() && !isSearching && userLocation && handleSearch(query)}
+              placeholder=""
+              disabled={isSearching || isRequestingLocation || !userLocation}
+              className="flex-1 h-10 border-0 bg-transparent text-base placeholder:text-[#523429]/40 focus-visible:ring-0 focus-visible:ring-offset-0 px-4 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+
+            <button
+              className="flex-shrink-0 flex items-center justify-center w-[45px] h-[45px] rounded-full bg-[#F4E4CB] hover:bg-[#F4E4CB]/80 transition-all"
+              aria-label="Voice input"
+            >
+              <svg width="29" height="36" viewBox="0 0 29 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" clipRule="evenodd" d="M14.5 0.90912C13.2236 0.90912 11.9833 1.38366 11.0571 2.25258C10.597 2.67883 10.2295 3.19509 9.97726 3.76935C9.72502 4.34361 9.59352 4.96358 9.59091 5.59075V14.2291C9.59091 15.4973 10.1276 16.6951 11.0571 17.5673C11.9833 18.4346 13.222 18.9108 14.5 18.9108C15.7764 18.9108 17.0167 18.4362 17.9429 17.5673C18.4032 17.1408 18.7709 16.6243 19.0231 16.0498C19.2753 15.4752 19.4067 14.8549 19.4091 14.2275V5.58912C19.4091 4.32091 18.8707 3.12314 17.9429 2.25093C17.0067 1.38349 15.7762 0.903893 14.5 0.90912ZM12.736 4.04279C13.217 3.60162 13.8473 3.35893 14.5 3.36366C15.1758 3.36366 15.8091 3.61571 16.264 4.04279C16.7156 4.46817 16.9545 5.02619 16.9545 5.59075V14.2291C16.9545 14.7937 16.7156 15.3517 16.264 15.7771C15.7827 16.2177 15.1525 16.4597 14.5 16.4546C13.8242 16.4546 13.1909 16.2026 12.736 15.7755C12.2844 15.35 12.0455 14.792 12.0455 14.2275V5.58912C12.0455 5.02456 12.2844 4.46817 12.736 4.04279Z" fill="#513529"/>
+                <path d="M7.95455 11.9546C7.95455 11.6291 7.82523 11.3169 7.59508 11.0868C7.36493 10.8566 7.05279 10.7273 6.72727 10.7273C6.40176 10.7273 6.08962 10.8566 5.85947 11.0868C5.62932 11.3169 5.5 11.6291 5.5 11.9546V14.2209C5.50273 15.3822 5.73851 16.5312 6.19363 17.5996C6.64875 18.668 7.31368 19.6342 8.14932 20.4407C9.54783 21.7939 11.3438 22.6623 13.2727 22.9182V24.6364H10.4091C10.0836 24.6364 9.77145 24.7657 9.5413 24.9958C9.31115 25.226 9.18182 25.5382 9.18182 25.8637C9.18182 26.1892 9.31115 26.5013 9.5413 26.7315C9.77145 26.9616 10.0836 27.0909 10.4091 27.0909H18.5909C18.9164 27.0909 19.2286 26.9616 19.4587 26.7315C19.6889 26.5013 19.8182 26.1892 19.8182 25.8637C19.8182 25.5382 19.6889 25.226 19.4587 24.9958C19.2286 24.7657 18.9164 24.6364 18.5909 24.6364H15.7273V22.9182C17.6563 22.6623 19.4522 21.7939 20.8507 20.4407C21.6864 19.6342 22.3513 18.668 22.8064 17.5996C23.2615 16.5312 23.4973 15.3822 23.5 14.2209V11.9546C23.5 11.6291 23.3707 11.3169 23.1405 11.0868C22.9104 10.8566 22.5982 10.7273 22.2727 10.7273C21.9472 10.7273 21.6351 10.8566 21.4049 11.0868C21.1748 11.3169 21.0455 11.6291 21.0455 11.9546V14.2209C21.0428 15.0539 20.8728 15.8778 20.5456 16.6438C20.2184 17.4098 19.7407 18.1022 19.1407 18.68C17.8948 19.881 16.2305 20.55 14.5 20.5455C12.7695 20.55 11.1052 19.881 9.85932 18.68C9.25932 18.1022 8.78162 17.4098 8.45442 16.6438C8.12722 15.8778 7.95717 15.0539 7.95455 14.2209V11.9546Z" fill="#513529"/>
+              </svg>
+            </button>
+
+            <button 
+              onClick={() => query.trim() && !isSearching && userLocation && handleSearch(query)}
+              disabled={!query.trim() || isSearching || !userLocation}
+              className="flex-shrink-0 flex items-center justify-center w-[45px] h-[45px] rounded-full bg-[#523429] hover:bg-[#523429]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              aria-label="Submit search"
+            >
+              <ArrowUp className="w-6 h-6 text-white" strokeWidth={2.5} />
+            </button>
           </div>
         </div>
 
-        <Button
-          onClick={() => handleSearch(query)}
-          disabled={isSearching || isRequestingLocation || !userLocation || !query.trim()}
-          variant="secondary"
-          className="w-full rounded bg-gray-100 px-5 py-2 text-sm text-gray-800 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isSearching ? 'Searching...' : 'VADR Search'}
-        </Button>
-
         {searchError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 max-w-2xl w-full">
             {searchError}
           </div>
         )}
 
         {isSearching && (
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+          <div className="flex items-center justify-center gap-2 text-sm text-[#523429]/70">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#523429]/30 border-t-[#523429]" />
             <span>Searching businesses near you...</span>
           </div>
         )}
 
-        {/* Example queries as buttons */}
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500">Or try one of these:</p>
-          <div className="flex flex-col gap-2">
-            {EXAMPLE_QUERIES.map((example, index) => (
-              <Button
+        {/* Suggestion prompts */}
+        <div className="w-full flex flex-col items-center gap-6">
+          <h3 className="text-2xl font-medium tracking-[-0.96px] text-[#513529]">
+            Let Tara:
+          </h3>
+
+          <div className="w-full flex flex-col items-center gap-4">
+            {SUGGESTION_PROMPTS.map((prompt, index) => (
+              <button
                 key={index}
-                onClick={() => handleSearch(example)}
+                onClick={() => {
+                  setQuery(prompt);
+                  if (userLocation && !isSearching) {
+                    handleSearch(prompt);
+                  }
+                }}
                 disabled={isSearching || isRequestingLocation || !userLocation}
-                variant="outline"
-                className="w-full justify-start border-gray-200 px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center px-[21px] py-[13px] rounded-[70px] border-2 border-[#513529] bg-[#E8BE8C] hover:bg-[#E8BE8C]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="mr-2">🎤</span>
-                {example}
-              </Button>
+                <span className="text-lg font-medium tracking-[-0.72px] text-black">
+                  {prompt}
+                </span>
+              </button>
             ))}
           </div>
         </div>
@@ -460,94 +476,106 @@ export default function Home() {
   );
 
   const renderReviewStage = () => (
-    <div className="mx-auto w-full max-w-5xl px-6 py-16">
-      <div className="flex flex-col gap-2 pb-6">
-        <p className="text-xs uppercase tracking-[0.3em] text-gray-400">Review leads</p>
-        <h2 className="text-3xl font-semibold text-gray-900">Pick the businesses VADR will call</h2>
-        <p className="text-sm text-gray-500">
-          Uncheck any businesses that do not fit the search intent. VADR will call the remaining {selectedCount} leads in parallel.
+    <div className="min-h-screen bg-[#F4E4CB] px-14 py-8">
+      <div className="mb-16 flex items-center gap-3">
+        <div className="relative h-[22px] w-[22px] flex-shrink-0">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="11" cy="11" r="11" fill="#D4A574"/>
+            <circle cx="11" cy="11" r="8.3" fill="#8B5E3C"/>
+            <path d="M5.9 11C5.9 8.2 8.2 5.9 11 5.9C13.8 5.9 16.1 8.2 16.1 11C16.1 13.8 13.8 16.1 11 16.1" stroke="#F4E4CB" strokeWidth="0.9"/>
+          </svg>
+        </div>
+        <h1 className="font-kodchasan text-[25px] font-normal tracking-[-0.991px] leading-none text-[#523429]">
+          TARA
+        </h1>
+      </div>
+
+      <div className="mb-14">
+        <p className="mb-2 font-inter text-[30px] font-medium tracking-[-1.2px] leading-normal text-[#513529]/50">
+          REVIEW LEADS
+        </p>
+        <h2 className="mb-4 font-inter text-[50px] font-medium tracking-[-2px] leading-normal text-[#513529]">
+          Pick the businesses Tara will call
+        </h2>
+        <p className="font-inter text-[24px] font-medium tracking-[-0.96px] leading-normal text-[#513529]/50">
+          Uncheck any businesses that do not your criteria. Tara will call the remaining {selectedCount} leads in parallel
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr className="text-left text-xs uppercase tracking-[0.2em] text-gray-500">
-              <th className="px-5 py-4">
-                <input
-                  type="checkbox"
-                  checked={selectedCount === candidates.length}
-                  ref={input => {
-                    if (input) {
-                      input.indeterminate = selectedCount > 0 && selectedCount < candidates.length;
-                    }
-                  }}
-                  onChange={event => handleToggleAll(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-              </th>
-              <th className="px-5 py-4 text-sm font-medium">Business</th>
-              <th className="px-5 py-4 text-sm font-medium">Contact</th>
-              <th className="px-5 py-4 text-sm font-medium">Description</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {candidates.map(lead => {
+      <div className="relative">
+        <div className="rounded-[39px] border-[3px] border-[#523429] bg-white overflow-hidden">
+          <div className="rounded-t-[39px] bg-[#EDD2B0] border-b-[3px] border-[#523429] h-[100px]">
+          </div>
+
+          <div>
+            {candidates.map((lead, index) => {
               const checked = !!selectedLeadIds[lead.id];
               return (
-                <tr key={lead.id} className="text-sm text-gray-600">
-                  <td className="px-5 py-4 align-top">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleToggleLead(lead.id)}
-                      className="mt-1 h-4 w-4 rounded border-gray-300"
-                    />
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <div className="font-semibold text-gray-900">{lead.name}</div>
-                    {lead.distance != null && (
-                      <p className="text-xs text-gray-500">{lead.distance} mi away</p>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <div className="font-mono text-sm text-gray-700">{lead.phone}</div>
-                    <p className="text-xs text-gray-500">{lead.source}</p>
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <p className="text-sm text-gray-600">{lead.description}</p>
-                  </td>
-                </tr>
+                <div key={lead.id}>
+                  <div className="flex items-center px-8 py-12 min-h-[162px] bg-[#F4E4CB]">
+                    <button
+                      onClick={() => handleToggleLead(lead.id)}
+                      className="flex-shrink-0 mr-6"
+                      aria-label={`${checked ? 'Uncheck' : 'Check'} ${lead.name}`}
+                    >
+                      {checked ? (
+                        <svg width="55" height="55" viewBox="0 0 55 55" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path fillRule="evenodd" clipRule="evenodd" d="M50.4168 27.5C50.4168 40.1564 40.1566 50.4167 27.5002 50.4167C14.8436 50.4167 4.5835 40.1564 4.5835 27.5C4.5835 14.8435 14.8436 4.58334 27.5002 4.58334C40.1566 4.58334 50.4168 14.8435 50.4168 27.5ZM36.7363 20.5555C37.4075 21.2267 37.4075 22.315 36.7363 22.9861L25.2779 34.4444C24.6067 35.1157 23.5186 35.1157 22.8473 34.4444L18.264 29.8611C17.5928 29.1899 17.5928 28.1018 18.264 27.4306C18.9352 26.7593 20.0235 26.7593 20.6947 27.4306L24.0627 30.7984L29.1841 25.677L34.3057 20.5555C34.977 19.8843 36.065 19.8843 36.7363 20.5555Z" fill="#4FB8FF"/>
+                        </svg>
+                      ) : (
+                        <svg width="55" height="55" viewBox="0 0 55 55" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="27.5" cy="27.5" r="25.9167" stroke="#523429" strokeWidth="3.16667"/>
+                        </svg>
+                      )}
+                    </button>
+
+                    <div className="flex-1">
+                      <h3 className="font-inter text-xl font-semibold text-[#513529] mb-1">{lead.name}</h3>
+                      <p className="font-inter text-base text-[#513529]/70 mb-2">{lead.phone}</p>
+                      <p className="font-inter text-sm text-[#513529]/60">{lead.description}</p>
+                      <div className="flex items-center gap-4 mt-2">
+                        {lead.distance != null && (
+                          <span className="font-inter text-sm text-[#513529]/50">{lead.distance.toFixed(1)} mi away</span>
+                        )}
+                        <span className="font-inter text-sm text-[#513529]/50">{lead.rating.toFixed(1)}/5 · {lead.source}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {index < candidates.length - 1 && (
+                    <div className="h-[3px] bg-[#523429]" />
+                  )}
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-gray-500">
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="font-inter text-lg text-[#513529]/70">
           {selectedCount} of {candidates.length} businesses selected
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <Button
             variant="outline"
-            size="sm"
             onClick={() => setStage('search')}
-            className="border-gray-300 text-gray-700 hover:bg-gray-100"
+            className="rounded-full border-2 border-[#523429] bg-transparent px-6 py-3 font-inter text-base font-medium text-[#523429] hover:bg-[#523429]/10"
           >
             Edit search
           </Button>
           <Button
             onClick={handleStartCalls}
             disabled={!selectedCount || isLaunching}
-            className="rounded-full bg-black px-6 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
+            className="rounded-full bg-[#523429] px-8 py-3 font-inter text-base font-semibold text-white hover:bg-[#523429]/90 disabled:cursor-not-allowed disabled:bg-[#523429]/30"
           >
-            {isLaunching ? 'Launching calls…' : `Go · ${selectedCount} calls`}
+            {isLaunching ? 'Launching calls…' : `Start ${selectedCount} calls`}
           </Button>
         </div>
       </div>
       {launchError && (
-        <p className="mt-3 text-sm text-red-500">{launchError}</p>
+        <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-50 px-4 py-3 font-inter text-sm text-red-700">
+          {launchError}
+        </div>
       )}
     </div>
   );
@@ -630,39 +658,31 @@ export default function Home() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-white text-gray-900">
-      <header className="flex items-center justify-end gap-3 px-6 py-4 text-sm text-gray-600">
-        {stage === 'review' && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setStage('search')}
-            className="text-gray-500 hover:text-gray-900"
-          >
-            Back to search
-          </Button>
-        )}
-        {stage === 'calling' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            className="border-gray-300 text-gray-700 hover:bg-gray-100"
-          >
-            New search
-          </Button>
-        )}
-        {stage === 'summary' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            className="border-gray-300 text-gray-700 hover:bg-gray-100"
-          >
-            New search
-          </Button>
-        )}
-      </header>
+    <div className={`flex min-h-screen flex-col ${stage === 'search' || stage === 'review' ? 'bg-[#F4E4CB]' : 'bg-white'} text-gray-900`}>
+      {stage !== 'search' && stage !== 'review' && (
+        <header className="flex items-center justify-end gap-3 px-6 py-4 text-sm text-gray-600">
+          {stage === 'calling' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              className="border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              New search
+            </Button>
+          )}
+          {stage === 'summary' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              className="border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              New search
+            </Button>
+          )}
+        </header>
+      )}
 
       <main className="flex-1">
         {stage === 'search' && renderSearchStage()}
@@ -671,19 +691,21 @@ export default function Home() {
         {stage === 'summary' && renderSummaryStage()}
       </main>
 
-      <footer className="border-t border-gray-200">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-5 text-xs text-gray-500 md:flex-row">
-          <div className="flex flex-wrap items-center gap-4">
-            <span>VADR demo</span>
-            <span>Parallel voice research</span>
+      {stage !== 'search' && stage !== 'review' && (
+        <footer className="border-t border-gray-200">
+          <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-5 text-xs text-gray-500 md:flex-row">
+            <div className="flex flex-wrap items-center gap-4">
+              <span>TARA demo</span>
+              <span>Parallel voice research</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <span>Privacy</span>
+              <span>Terms</span>
+              <span>About</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <span>Privacy</span>
-            <span>Terms</span>
-            <span>About</span>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

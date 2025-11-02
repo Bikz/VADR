@@ -9,6 +9,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        inter: ['var(--font-inter)', 'Inter', '-apple-system', 'Roboto', 'Helvetica', 'sans-serif'],
+        kodchasan: ['var(--font-kodchasan)', 'Kodchasan', '-apple-system', 'Roboto', 'Helvetica', 'sans-serif'],
+      },
       colors: {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
