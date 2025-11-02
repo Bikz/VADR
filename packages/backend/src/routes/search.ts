@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { Metorial } from 'metorial';
-import { leadSchema, type Lead } from '../types/index.js';
+import { leadSchema, type Lead } from '@vadr/shared';
 
 const metorial = new Metorial({
   apiKey: process.env.METORIAL_API_KEY || '',

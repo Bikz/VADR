@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { CallPrep, Lead } from '@/types';
+import type { CallPrep, Lead } from '@vadr/shared';
 import { env } from './env';
 
 let cachedClient: OpenAI | null = null;

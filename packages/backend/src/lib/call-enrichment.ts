@@ -5,7 +5,7 @@
  * in Call.extractedData (hours, insurance accepted, SKUs, price ranges).
  */
 
-import type { Call } from '@/types';
+import type { Call } from '@vadr/shared';
 import { getCaptainClient } from './captain';
 
 interface EnrichmentResult {

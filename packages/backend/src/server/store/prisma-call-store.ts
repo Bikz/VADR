@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type { Call, CallPrep, CallState, Lead, TranscriptTurn, VADRRun } from '@/types';
+import type { Call, CallPrep, CallState, Lead, TranscriptTurn, VADRRun } from '@vadr/shared';
 import type { CallSession, CallStore, CreateRunParams, RunSession } from './types';
 import { prisma } from '@/lib/db';
 

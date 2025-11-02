@@ -1,4 +1,4 @@
-import type { Call, CallPrep, CallState, Lead, TranscriptTurn, VADRRun } from '@/types';
+import type { Call, CallPrep, CallState, Lead, TranscriptTurn, VADRRun } from '@vadr/shared';
 
 export interface RunSession {
   run: VADRRun;

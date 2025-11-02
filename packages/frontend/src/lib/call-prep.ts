@@ -1,4 +1,4 @@
-import type { CallPrep, Lead } from '@/types';
+import type { CallPrep, Lead } from '@vadr/shared';
 
 function formatSampleLead(leads: Lead[]): string {
   if (!leads.length) {

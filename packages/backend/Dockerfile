@@ -11,7 +11,7 @@ COPY packages/frontend/package.json ./packages/frontend/
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/shared/package.json ./packages/shared/
 
-# Install ALL workspace dependencies
+# Install ALL workspace dependencies from the root
 RUN bun install --frozen-lockfile
 
 # 3. Copy all source code
@@ -19,15 +19,14 @@ RUN bun install --frozen-lockfile
 COPY packages ./packages
 
 # 4. Generate Prisma client
-# We specify the schema path inside the backend package
+# Specify the schema path relative to the root
 RUN bunx prisma generate --schema=./packages/backend/prisma/schema.prisma
 
 # 5. Build the backend
 # This runs the "build" script inside packages/backend/package.json
 RUN bun run --cwd packages/backend build
 
-# 6. Final runtime
-# We only need the backend and shared code for the final image
+# 6. Final runtime image
 FROM base AS final
 WORKDIR /app
 
@@ -40,8 +39,8 @@ COPY --from=base /app/packages/backend ./packages/backend
 # Copy the built shared package
 COPY --from=base /app/packages/shared ./packages/shared
 
-# Set the working directory to the backend and run the start command
+# Set the working directory to the backend for the start command
 WORKDIR /app/packages/backend
 
-# The start command is "bun run dist/index.js"
+# The start command is "bun run start" from the backend's package.json
 CMD ["bun", "run", "start"]

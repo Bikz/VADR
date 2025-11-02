@@ -1,4 +1,4 @@
-import type { Call, CallState, TranscriptTurn } from '@/types';
+import type { Call, CallState, TranscriptTurn } from '@vadr/shared';
 import type { CallSession, CallStore, CreateRunParams, RunSession } from './types';
 
 const TERMINAL_STATES: CallState[] = ['completed', 'failed', 'voicemail'];

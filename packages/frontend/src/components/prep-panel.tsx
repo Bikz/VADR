@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Target, FileText, AlertTriangle, XCircle } from 'lucide-react';
-import type { CallPrep } from '@/types';
+import type { CallPrep } from '@vadr/shared';
 
 interface PrepPanelProps {
   prep: CallPrep;

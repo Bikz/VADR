@@ -62,6 +62,10 @@ export const callSchema = z.object({
       price: z.string().optional(),
       availability: z.string().optional(),
       notes: z.string().optional(),
+      hours: z.string().optional(),
+      insuranceAccepted: z.string().optional(),
+      skus: z.array(z.string()).optional(),
+      priceRange: z.string().optional(),
     })
     .optional(),
 });

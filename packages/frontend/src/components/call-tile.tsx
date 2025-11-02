@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { Call } from '@/types';
+import type { Call } from '@vadr/shared';
 import { getStateColor, getSentimentColor } from '@/lib/call-style';
 import { Waveform } from './waveform';
 import { useCallAudio } from '@/hooks/use-call-audio';

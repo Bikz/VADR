@@ -1,4 +1,4 @@
-import type { Speaker, TranscriptTurn } from '@/types';
+import type { Speaker, TranscriptTurn } from '@vadr/shared';
 
 export function createTranscriptTurn(callId: string, speaker: Speaker, text: string): TranscriptTurn {
   const now = Date.now();

@@ -1,4 +1,4 @@
-import type { Call, CallPrep, Lead, TranscriptTurn, VADRRun } from '@/types';
+import type { Call, CallPrep, Lead, TranscriptTurn, VADRRun } from '@vadr/shared';
 import { getTwilioClient } from '@/lib/twilio';
 import { env, resolvePublicBaseUrl } from '@/lib/env';
 import { createTranscriptTurn } from '@/lib/transcript';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Call, VADRRun } from '@/types';
+import type { Call, VADRRun } from '@vadr/shared';
 import { CallTile } from './call-tile';
 import { apiClient } from '@/lib/api-client';
 

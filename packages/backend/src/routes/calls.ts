@@ -4,7 +4,7 @@ import {
   CallActionRequest,
   startCallsRequestSchema,
   StartCallsRequest,
-} from '../types/index.js';
+} from '@vadr/shared';
 import { callService } from '../server/services/call-service.js';
 
 export async function callRoutes(fastify: FastifyInstance) {

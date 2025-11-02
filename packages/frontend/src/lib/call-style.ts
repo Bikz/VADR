@@ -1,4 +1,4 @@
-import type { CallState, Sentiment } from '@/types';
+import type { CallState, Sentiment } from '@vadr/shared';
 
 export function getStateColor(state: CallState): string {
   switch (state) {

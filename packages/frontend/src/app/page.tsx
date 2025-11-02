@@ -5,7 +5,7 @@ import { Sparkles, Search, Plus, ArrowUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
-import type { Call, Lead, VADRRun } from '@/types';
+import type { Call, Lead, VADRRun } from '@vadr/shared';
 import { apiClient } from '@/lib/api-client';
 import { buildCallPrep } from '@/lib/call-prep';
 
