@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { callService } from '@/server/services/call-service';
 
 function parseForm(body: string) {
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   const callId = url.searchParams.get('callId');
 
   if (!runId || !callId) {
-    return new Response('Missing identifiers', { status: 400 });
+    return NextResponse.json({ error: 'Missing identifiers' }, { status: 400 });
   }
 
   const body = await request.text();
@@ -36,9 +36,18 @@ export async function POST(request: NextRequest) {
       callDuration,
     });
   } catch (error) {
-    console.error('Failed to handle status callback', error);
+    console.error('[status-callback] failed to handle status', {
+      runId,
+      callId,
+      error,
+    });
     return new Response('Server error', { status: 500 });
   }
 
-  return new Response('OK', { status: 200 });
+  return NextResponse.json({ ok: true });
 }
+
+export async function GET(request: NextRequest) {
+  return POST(request);
+}
+
