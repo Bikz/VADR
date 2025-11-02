@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Call, VADRRun } from '@/types';
 import { CallTile } from './call-tile';
+import { apiClient } from '@/lib/api-client';
 
 interface CallGridProps {
   run: VADRRun;
@@ -28,7 +29,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
   }, [run]);
 
   useEffect(() => {
-    const source = new EventSource(`/api/events?runId=${run.id}`);
+    const source = apiClient.createEventSource('/api/events', { runId: run.id });
 
     source.onmessage = (message) => {
       if (!message.data) return;
@@ -85,10 +86,9 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call, nextState: boolean) => {
       optimisticUpdate(call.id, { isListening: nextState });
       try {
-        await fetch(`/api/calls/${call.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ isListening: nextState }),
+        await apiClient.post(`/api/calls/${call.id}`, {
+          action: 'listen',
+          value: nextState,
         });
       } catch (error) {
         console.error('Failed to toggle listen state', error);
@@ -101,10 +101,9 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call, nextState: boolean) => {
       optimisticUpdate(call.id, { isTakenOver: nextState });
       try {
-        await fetch(`/api/calls/${call.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ isTakenOver: nextState }),
+        await apiClient.post(`/api/calls/${call.id}`, {
+          action: 'takeover',
+          value: nextState,
         });
       } catch (error) {
         console.error('Failed to toggle takeover', error);
@@ -117,10 +116,8 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call) => {
       optimisticUpdate(call.id, { state: 'completed' });
       try {
-        await fetch(`/api/calls/${call.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endCall: true }),
+        await apiClient.post(`/api/calls/${call.id}`, {
+          action: 'end',
         });
       } catch (error) {
         console.error('Failed to end call', error);

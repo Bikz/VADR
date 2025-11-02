@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
 import type { Call, Lead, VADRRun } from '@/types';
 import { createInitialCall } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api-client';
 
 const EXAMPLE_QUERIES = [
   'hair salons with same-day appointments',
@@ -191,20 +192,11 @@ export default function Home() {
     setQuery(searchQuery);
 
     try {
-      const searchParams = new URLSearchParams({
+      const results = await apiClient.get('/api/search', {
         q: searchQuery.trim(),
         lat: userLocation.lat.toString(),
         lng: userLocation.lng.toString(),
       });
-
-      const response = await fetch(`/api/search?${searchParams.toString()}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Search failed: ${response.status}`);
-      }
-
-      const results = await response.json();
       
       const leads: Lead[] = results.map((result: any, index: number) => ({
         id: `lead-${Date.now()}-${index}`,
