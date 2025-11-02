@@ -8,8 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "bun run --cwd ../shared build && tsc && tsc-alias",
     "start": "bun run dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "postinstall": "bun run --cwd ../shared build && prisma generate"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
