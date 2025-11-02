@@ -130,6 +130,24 @@ export default function Home() {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
+    const overridePhone = process.env.NEXT_PUBLIC_TEST_PHONE;
+    const overrideName = process.env.NEXT_PUBLIC_TEST_NAME ?? 'Test Call Target';
+
+    const leadsForRun: Lead[] = overridePhone
+      ? [
+          {
+            id: 'test-lead',
+            name: overrideName,
+            phone: overridePhone,
+            source: 'Manual',
+            confidence: 1,
+            rating: 5,
+            reviewCount: 1,
+            description: 'Manually configured test recipient',
+          },
+        ]
+      : selectedLeads;
+
     const runId = `run-${Date.now()}`;
 
     setIsLaunching(true);
@@ -142,7 +160,7 @@ export default function Home() {
         body: JSON.stringify({
           runId,
           query,
-          leads: selectedLeads,
+          leads: leadsForRun,
           prep: mockCallPrep
         })
       });
