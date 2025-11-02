@@ -5,7 +5,7 @@ const metorial = new Metorial({
   apiKey: process.env.METORIAL_API_KEY || '',
 });
 
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'REPLACED_API_KEY';
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
 interface BusinessLead {
   name: string;
