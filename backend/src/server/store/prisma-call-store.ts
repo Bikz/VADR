@@ -132,6 +132,11 @@ export class PrismaCallStore implements CallStore {
         updateData.durationSeconds = Math.max(Math.round(diffMs / 1000), 0);
       }
 
+      // Handle extractedData
+      if (extra.extractedData !== undefined) {
+        updateData.extractedData = extra.extractedData;
+      }
+
       await tx.call.update({
         where: { id: callId },
         data: updateData,
@@ -330,7 +335,9 @@ export class PrismaCallStore implements CallStore {
       sentiment: (call.sentiment as Call['sentiment']) ?? 'neutral',
       isListening: call.isListening,
       isTakenOver: call.isTakenOver,
-      extractedData: undefined,
+      extractedData: call.extractedData
+        ? (call.extractedData as Call['extractedData'])
+        : undefined,
     };
   }
 

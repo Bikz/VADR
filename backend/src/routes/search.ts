@@ -6,7 +6,7 @@ const metorial = new Metorial({
   apiKey: process.env.METORIAL_API_KEY || '',
 });
 
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'AIzaSyA6ndDKx6PlVu2MMBFIX1IuG5r5ccdFlhY';
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
 function normalisePhone(phone: string): string {
   return phone.replace(/\D/g, '');

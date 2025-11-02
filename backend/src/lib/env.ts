@@ -23,6 +23,8 @@ export const env = {
   openAiApiKey: () => readEnv('OPENAI_API_KEY'),
   openAiModel: () => readEnv('VOICE_AGENT_MODEL', false) ?? 'gpt-4o-mini',
   twilioVoiceName: () => readEnv('TWILIO_VOICE_NAME', false) ?? 'Polly.Joanna',
+  captainApiKey: () => readEnv('CAPTAIN_API_KEY', false),
+  captainOrganizationId: () => readEnv('CAPTAIN_ORGANIZATION_ID', false),
 };
 
 export function assertEnv() {

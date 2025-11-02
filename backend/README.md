@@ -35,6 +35,10 @@ Required variables:
 - `DATABASE_URL` - PostgreSQL connection string
 - `GOOGLE_PLACES_API_KEY` - Google Places API key
 
+Optional variables (for after-call enrichment):
+- `CAPTAIN_API_KEY` - Captain API key (default: `cap_dev_ntWWrmra24fjcsBgTrtyCeFbZqiEXzBL`)
+- `CAPTAIN_ORGANIZATION_ID` - Captain organization ID (default: `armaanb7@ucla.edu`)
+
 ### Production Build
 
 ```bash
@@ -131,4 +135,3 @@ backend/
 
 - Use `bun run dev` for hot-reloading during development
 - Check logs with `railway logs` after deployment
-- Test webhooks locally with ngrok before deploying

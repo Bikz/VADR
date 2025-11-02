@@ -4,6 +4,7 @@ import { env, resolvePublicBaseUrl } from '@/lib/env';
 import { createTranscriptTurn } from '@/lib/transcript';
 import { generateAgentReply } from '@/lib/agent';
 import { callStore, type CallStore, type RunSession } from '@/server/store';
+import { enrichCallData } from '@/lib/call-enrichment';
 
 interface StartRunArgs {
   runId: string;
@@ -60,12 +61,20 @@ class CallService {
 
     await Promise.all(
       session.run.calls.map(async (call) => {
+        // Normalize phone number to E.164 format (ensure it starts with +)
+        let phoneNumber = call.lead.phone.trim();
+        if (!phoneNumber.startsWith('+')) {
+          // If it doesn't start with +, assume it's a US number and add +1
+          phoneNumber = phoneNumber.replace(/^1/, ''); // Remove leading 1 if present
+          phoneNumber = `+1${phoneNumber}`;
+        }
+
         try {
           const answerUrl = `${baseUrl}/api/twilio/outbound?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
           const statusCallback = `${baseUrl}/api/twilio/status?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
 
           const result = await client.calls.create({
-            to: call.lead.phone,
+            to: phoneNumber,
             from: fromNumber,
             url: answerUrl,
             statusCallback,
@@ -77,18 +86,29 @@ class CallService {
           console.log('[call-service] call created', {
             runId,
             callId: call.id,
-            to: call.lead.phone,
+            originalPhone: call.lead.phone,
+            normalizedPhone: phoneNumber,
             twilioSid: result.sid,
             status: result.status,
           });
 
           await this.store.attachCallSid(call.id, result.sid);
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorDetails = error && typeof error === 'object' && 'moreInfo' in error 
+            ? (error as any).moreInfo 
+            : null;
+          
           console.error('[call-service] failed to start call', {
             runId,
             callId: call.id,
-            to: call.lead.phone,
-            error,
+            originalPhone: call.lead.phone,
+            normalizedPhone: phoneNumber,
+            error: errorMessage,
+            errorDetails,
+            baseUrl,
+            answerUrl: `${baseUrl}/api/twilio/outbound?runId=${runId}&callId=${encodeURIComponent(call.id)}`,
+            twilioError: error,
           });
           await this.store.updateCallState(call.id, 'failed');
         }
@@ -234,6 +254,9 @@ class CallService {
     if (state === 'completed') {
       const durationSeconds = Number.parseInt(callDuration ?? '0', 10);
       await this.store.updateCallState(callId, state, { duration: Number.isFinite(durationSeconds) ? durationSeconds : 0 });
+      
+      // Enrich call data with Captain API after completion
+      await this.enrichCompletedCall(callId);
     } else {
       await this.store.updateCallState(callId, state);
     }
@@ -266,6 +289,9 @@ class CallService {
     }
 
     await this.store.updateCallState(callId, 'completed');
+    
+    // Enrich call data with Captain API after completion
+    await this.enrichCompletedCall(callId);
   }
 
   async getRun(runId: string) {
@@ -274,6 +300,53 @@ class CallService {
 
   async getCall(callId: string) {
     return this.store.getCall(callId);
+  }
+
+  /**
+   * Enrich a completed call with additional data from Captain API
+   * This runs asynchronously and updates extractedData with missing fields
+   */
+  private async enrichCompletedCall(callId: string): Promise<void> {
+    try {
+      const callSession = await this.store.getCall(callId);
+      if (!callSession) {
+        console.warn('[call-service] Cannot enrich call - call session not found', { callId });
+        return;
+      }
+
+      const call = callSession.call;
+      
+      // Enrich in background - don't block call completion
+      setImmediate(async () => {
+        try {
+          const enriched = await enrichCallData(call);
+          
+          if (enriched) {
+            // Update the call with enriched data
+            await this.store.updateCallState(callId, call.state, {
+              extractedData: enriched,
+            });
+            
+            console.log('[call-service] Call enriched successfully', {
+              callId,
+              leadName: call.lead.name,
+              enrichedFields: Object.keys(enriched).filter(k => enriched[k as keyof typeof enriched]),
+            });
+          }
+        } catch (error) {
+          // Log error but don't throw - enrichment failure shouldn't break call completion
+          console.error('[call-service] Failed to enrich call', {
+            callId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    } catch (error) {
+      console.error('[call-service] Error setting up enrichment', {
+        callId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private mapStatus(callStatus: string, answeredBy?: string): { state: Call['state'] } {

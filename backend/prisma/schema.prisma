@@ -45,6 +45,7 @@ model Call {
   twilioCallSid    String?  @unique
   isListening      Boolean  @default(false)
   isTakenOver      Boolean  @default(false)
+  extractedData    Json?
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
