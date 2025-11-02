@@ -1,5 +1,13 @@
 # 1. Base image
-FROM oven/bun:1.2-debian AS base
+FROM oven/bun:1.1-debian AS base
+
+# Install OpenSSL 3 AND the development headers
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # 2. Install dependencies
@@ -19,7 +27,8 @@ RUN bun install --frozen-lockfile
 COPY packages ./packages
 
 # 4. Generate Prisma client
-# Specify the schema path relative to the root
+# Force Prisma to build the OpenSSL 3.0-compatible binary
+ENV PRISMA_CLI_BINARY_TARGETS="native,debian-openssl-3.0.x"
 RUN bunx prisma generate --schema=./packages/backend/prisma/schema.prisma
 
 # 5. Build the backend
@@ -30,9 +39,6 @@ RUN bun run --cwd packages/backend build
 FROM base AS final
 WORKDIR /app
 
-# Copy root package.json for workspace resolution
-COPY --from=base /app/package.json ./package.json
-
 # Copy only the necessary node_modules
 COPY --from=base /app/node_modules ./node_modules
 
@@ -41,6 +47,9 @@ COPY --from=base /app/packages/backend ./packages/backend
 
 # Copy the built shared package
 COPY --from=base /app/packages/shared ./packages/shared
+
+# Copy the generated Prisma engine
+COPY --from=base /app/node_modules/.prisma/client ./node_modules/.prisma/client
 
 # Set the working directory to the backend for the start command
 WORKDIR /app/packages/backend
