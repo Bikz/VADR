@@ -11,11 +11,13 @@ npm install -g @railway/cli
 
 ## Step-by-Step Deployment
 
-### 1. Navigate to Backend
+### 1. Navigate to the project root
 
 ```bash
-cd backend
+cd /path/to/VADR
 ```
+
+> The root-level `railway.toml` now tells Railway to build the backend service, so you no longer need to run commands inside `backend/`.
 
 ### 2. Login to Railway
 
@@ -59,7 +61,7 @@ railway variables \
 railway up
 ```
 
-Wait for deployment to complete. You'll see build logs in your terminal.
+Wait for deployment to complete. You'll see build logs in your terminal. Any future pushes to the main branch will trigger the same install/build/start steps automatically.
 
 ### 6. Get Your Public URL
 
