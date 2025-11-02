@@ -35,20 +35,33 @@ const matchesOrigin = (origin: string | undefined): boolean => {
     return true;
   }
   
+  // Extract hostname from origin URL
+  let originHostname: string;
+  try {
+    originHostname = new URL(origin).hostname;
+  } catch {
+    // If origin is not a valid URL, try to parse it differently
+    originHostname = origin.replace(/^https?:\/\//, '').split('/')[0];
+  }
+  
   // Check explicitly allowed origins
   const matchesExplicit = allowedOrigins.some((allowed) => {
     if (allowed === '*') return true;
     if (allowed.startsWith('http')) {
-      return origin === allowed;
+      try {
+        const allowedHostname = new URL(allowed).hostname;
+        return originHostname === allowedHostname || origin === allowed;
+      } catch {
+        return origin === allowed;
+      }
     }
     if (allowed.startsWith('*.')) {
-      const hostname = new URL(origin).hostname;
       const suffix = allowed.slice(1); // remove leading *
-      return hostname.endsWith(suffix);
+      return originHostname.endsWith(suffix);
     }
     try {
       const regex = new RegExp(allowed);
-      return regex.test(origin);
+      return regex.test(origin) || regex.test(originHostname);
     } catch {
       return false;
     }
@@ -56,30 +69,42 @@ const matchesOrigin = (origin: string | undefined): boolean => {
   
   if (matchesExplicit) return true;
   
-  // Check Vercel domains
-  const originHostname = new URL(origin).hostname;
+  // Check Vercel domains - originHostname should end with .vercel.app or .vercel.sh
   return vercelDomains.some((domain) => {
     if (domain.startsWith('*.')) {
-      const suffix = domain.slice(1);
+      const suffix = domain.slice(1); // remove leading * to get .vercel.app
       return originHostname.endsWith(suffix);
     }
     return originHostname === domain;
   });
 };
 
-// Register CORS
+// Register CORS with function-based origin checking
 await fastify.register(cors, {
-  origin: (origin, cb) => {
+  origin: (origin, callback) => {
+    // Handle requests with no origin (server-to-server, curl, etc.)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
+    // Check if origin is allowed
     if (matchesOrigin(origin)) {
-      cb(null, true);
+      fastify.log.debug({ origin }, 'CORS: allowing origin');
+      // Return the specific origin to set Access-Control-Allow-Origin header
+      callback(null, origin);
     } else {
-      fastify.log.warn({ origin }, 'CORS blocked origin');
-      cb(new Error(`Origin ${origin ?? '<unknown>'} is not allowed by CORS`));
+      fastify.log.warn({ origin }, 'CORS: blocking origin');
+      // Return false to deny the origin
+      callback(null, false);
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  exposedHeaders: ['Content-Type'],
+  preflight: true, // Explicitly enable preflight handling
+  strictPreflight: false, // Don't require preflight for all requests
 });
 
 // Health check
