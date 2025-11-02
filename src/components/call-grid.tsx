@@ -28,7 +28,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     setCallsById(Object.fromEntries(run.calls.map((call) => [call.id, call])));
     orderRef.current = run.calls.map((call) => call.id);
     completionRef.current = run.status === 'completed';
-  }, [run.id, run.status, run.calls]);
+  }, [run]);
 
   const applyCallUpdate = useCallback((call: Call) => {
     setCallsById((previous) => {
@@ -168,4 +168,3 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { callService } from '@/server/services/call-service';
 
 interface UpdateCallRequest {
@@ -7,7 +7,7 @@ interface UpdateCallRequest {
   endCall?: boolean;
 }
 
-export async function PATCH(request: Request, { params }: { params: { callId: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: { callId: string } }) {
   const { callId } = params;
   const payload = (await request.json()) as UpdateCallRequest;
   const callSession = callService.getCall(callId);
