@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Search, Sparkles } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,11 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
   const bestCall = [...completed]
     .sort((a, b) => {
       if (b.lead.rating !== a.lead.rating) return b.lead.rating - a.lead.rating;
-      return b.lead.confidence - a.lead.confidence;
+      // Sort by distance if available, otherwise by rating
+      if ((a.lead as any).distance != null && (b.lead as any).distance != null) {
+        return (a.lead as any).distance - (b.lead as any).distance;
+      }
+      return 0;
     })[0] ?? [...calls].sort((a, b) => b.lead.rating - a.lead.rating)[0];
 
   const highlights: string[] = [];
@@ -59,12 +63,12 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
 
   if (bestCall) {
     highlights.push(
-      `${bestCall.lead.name} stood out with a ${bestCall.lead.rating.toFixed(1)}/5 rating and ${bestCall.lead.reviewCount} reviews on ${bestCall.lead.source}.`
+      `${bestCall.lead.name} stood out with a ${bestCall.lead.rating.toFixed(1)}/5 rating on ${bestCall.lead.source}.`
     );
   }
 
   const recommendation = bestCall
-    ? `Recommend following up with ${bestCall.lead.name} at ${bestCall.lead.phone}. They were rated ${bestCall.lead.rating.toFixed(1)}/5 with ${bestCall.lead.reviewCount} reviews, and the call sentiment was ${bestCall.sentiment}. Their team noted: ${bestCall.lead.description}`
+    ? `Recommend following up with ${bestCall.lead.name} at ${bestCall.lead.phone}. They were rated ${bestCall.lead.rating.toFixed(1)}/5, and the call sentiment was ${bestCall.sentiment}. Their team noted: ${bestCall.lead.description}`
     : 'Recommend refining the search criteria and running VADR again; no strong matches surfaced in this round.';
 
   const nextSteps = bestCall
@@ -89,26 +93,105 @@ export default function Home() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<Record<string, boolean>>({});
   const [currentRun, setCurrentRun] = useState<VADRRun | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Request geolocation on mount
+  useEffect(() => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.warn('Geolocation error:', error);
+          setLocationError('Location access denied. You can still search by specifying a location in your query.');
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      setLocationError('Geolocation not supported. Please specify a location in your query.');
+    }
+  }, []);
 
   const selectedCount = useMemo(
     () => candidates.filter(lead => selectedLeadIds[lead.id]).length,
     [candidates, selectedLeadIds]
   );
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!query.trim()) return;
 
-    const leads = generateMockLeads(6);
-    const defaults = leads.reduce<Record<string, boolean>>((acc, lead) => {
-      acc[lead.id] = true;
-      return acc;
-    }, {});
+    setIsSearching(true);
+    setSearchError(null);
+    setCandidates([]);
+    setSelectedLeadIds({});
 
-    setCandidates(leads);
-    setSelectedLeadIds(defaults);
-    setCurrentRun(null);
-    setSummary(null);
-    setStage('review');
+    try {
+      const searchParams = new URLSearchParams({ q: query.trim() });
+      
+      // Use geolocation if available
+      if (userLocation) {
+        searchParams.append('lat', userLocation.lat.toString());
+        searchParams.append('lng', userLocation.lng.toString());
+      } else {
+        // Try to extract location from query if it mentions a city/area
+        const locationMatch = query.match(/\b(near me|in|at)\s+([A-Z][a-zA-Z\s,]+)/i);
+        if (locationMatch && locationMatch[2]) {
+          searchParams.append('location', locationMatch[2].trim());
+        }
+      }
+
+      const response = await fetch(`/api/search?${searchParams.toString()}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Search failed: ${response.status}`);
+      }
+
+      const results = await response.json();
+      
+      // Convert API results to Lead format - use ONLY real data from Perplexity, no fallbacks
+      const leads: Lead[] = results.map((result: any, index: number) => ({
+        id: `lead-${Date.now()}-${index}`,
+        name: result.name,
+        phone: result.phone,
+        source: result.source ?? 'Search',
+        url: result.url ?? undefined,
+        confidence: 0.9, // Not displayed, kept for type compatibility
+        rating: result.rating != null ? Number(result.rating.toFixed(1)) : 0, // Only format if exists
+        reviewCount: 0, // Not used - reviews column removed
+        description: result.description ?? result.address ?? 'No description available',
+        distance: result.distance ?? null, // Preserve distance from API
+      }));
+
+      if (leads.length === 0) {
+        setSearchError('No businesses found. Try a different search query.');
+        setIsSearching(false);
+        return;
+      }
+
+      const defaults = leads.reduce<Record<string, boolean>>((acc, lead) => {
+        acc[lead.id] = true;
+        return acc;
+      }, {});
+
+      setCandidates(leads);
+      setSelectedLeadIds(defaults);
+      setCurrentRun(null);
+      setSummary(null);
+      setStage('review');
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchError(error instanceof Error ? error.message : 'Failed to search for businesses. Please try again.');
+      // Don't fallback to mock data - show error instead
+      setIsSearching(false);
+    }
   };
 
   const handleToggleLead = (id: string) => {
@@ -167,6 +250,8 @@ export default function Home() {
     setSelectedLeadIds({});
     setCurrentRun(null);
     setSummary(null);
+    setSearchError(null);
+    setIsSearching(false);
     setStage('search');
   };
 
@@ -181,28 +266,40 @@ export default function Home() {
 
       <div className="w-full max-w-2xl">
         <div className="group relative flex items-center rounded-full border border-gray-200 bg-white px-5 py-3 shadow-sm hover:shadow md:px-6">
-          <Search className="mr-3 h-5 w-5 text-gray-400" />
+          <Search className={`mr-3 h-5 w-5 ${isSearching ? 'text-gray-300' : 'text-gray-400'}`} />
           <Input
             value={query}
             onChange={event => setQuery(event.target.value)}
-            onKeyDown={event => event.key === 'Enter' && handleSearch()}
+            onKeyDown={event => event.key === 'Enter' && !isSearching && handleSearch()}
             placeholder={EXAMPLE_QUERIES[0]}
-            className="h-8 flex-1 border-0 p-0 text-base placeholder:text-gray-400 focus-visible:ring-0"
+            disabled={isSearching}
+            className="h-8 flex-1 border-0 p-0 text-base placeholder:text-gray-400 focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <div className="ml-3 flex items-center gap-2 text-gray-400">
-            <span className="text-lg" aria-hidden>
-              🎤
-            </span>
+            {isSearching ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+            ) : (
+              <span className="text-lg" aria-hidden>
+                🎤
+              </span>
+            )}
           </div>
         </div>
       </div>
 
+      {searchError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {searchError}
+        </div>
+      )}
+
       <Button
         onClick={handleSearch}
+        disabled={isSearching || !query.trim()}
         variant="secondary"
-        className="rounded bg-gray-100 px-5 py-2 text-sm text-gray-800 hover:bg-gray-200"
+        className="rounded bg-gray-100 px-5 py-2 text-sm text-gray-800 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        VADR Search
+        {isSearching ? 'Searching...' : 'VADR Search'}
       </Button>
 
       <div className="space-y-2">
@@ -251,7 +348,6 @@ export default function Home() {
               </th>
               <th className="px-5 py-4 text-sm font-medium">Business</th>
               <th className="px-5 py-4 text-sm font-medium">Contact</th>
-              <th className="px-5 py-4 text-sm font-medium">Reviews</th>
               <th className="px-5 py-4 text-sm font-medium">Description</th>
             </tr>
           </thead>
@@ -270,15 +366,13 @@ export default function Home() {
                   </td>
                   <td className="px-5 py-4 align-top">
                     <div className="font-semibold text-gray-900">{lead.name}</div>
-                    <p className="text-xs text-gray-500">Confidence {(lead.confidence * 100).toFixed(0)}%</p>
+                    {(lead as any).distance != null && (
+                      <p className="text-xs text-gray-500">{(lead as any).distance} mi away</p>
+                    )}
                   </td>
                   <td className="px-5 py-4 align-top">
                     <div className="font-mono text-sm text-gray-700">{lead.phone}</div>
                     <p className="text-xs text-gray-500">{lead.source}</p>
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <div className="text-sm font-medium text-gray-900">{lead.rating.toFixed(1)} / 5.0</div>
-                    <p className="text-xs text-gray-500">{lead.reviewCount} reviews</p>
                   </td>
                   <td className="px-5 py-4 align-top">
                     <p className="text-sm text-gray-600">{lead.description}</p>
@@ -450,3 +544,4 @@ export default function Home() {
     </div>
   );
 }
+
