@@ -1,19 +1,19 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Search, Sparkles } from 'lucide-react';
+import { Sparkles, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
 import type { Call, Lead, VADRRun } from '@/types';
-import { generateMockLeads, createInitialCall } from '@/lib/mock-data';
+import { createInitialCall } from '@/lib/mock-data';
 
 const EXAMPLE_QUERIES = [
-  'Find 5 salons near me with same-day appointments under $60',
-  'Get quotes from 3 drywall contractors with next-day availability',
-  'Find massage therapists available today at 4 PM within 2 miles',
-  'Contact barbershops that are open now and accept walk-ins',
-  'Find tailors offering same-week alterations under $50'
+  'hair salons with same-day appointments',
+  'drywall contractors',
+  'massage therapists available today',
+  'barbershops that accept walk-ins',
+  'tailors offering alterations',
 ];
 
 type Stage = 'search' | 'review' | 'calling' | 'summary';
@@ -27,13 +27,13 @@ interface RunSummary {
 function generateRunSummary(query: string, calls: Call[]): RunSummary {
   if (!calls.length) {
     return {
-      highlights: [`No calls were placed for “${query}”.`],
+      highlights: [`No calls were placed for "${query}".`],
       recommendation: 'Try refining the query and launching a new search.',
       nextSteps: [
         'Adjust the prompt with more specific requirements.',
         'Expand the acceptable budget or distance.',
-        'Run VADR again to gather a new list of leads.'
-      ]
+        'Run VADR again to gather a new list of leads.',
+      ],
     };
   }
 
@@ -45,7 +45,6 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
   const bestCall = [...completed]
     .sort((a, b) => {
       if (b.lead.rating !== a.lead.rating) return b.lead.rating - a.lead.rating;
-      // Sort by distance if available, otherwise by rating
       if ((a.lead as any).distance != null && (b.lead as any).distance != null) {
         return (a.lead as any).distance - (b.lead as any).distance;
       }
@@ -54,7 +53,7 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
 
   const highlights: string[] = [];
   highlights.push(
-    `Connected with ${completed.length} of ${calls.length} businesses for “${query}” (${voicemail.length} voicemail, ${failed.length} unavailable).`
+    `Connected with ${completed.length} of ${calls.length} businesses for "${query}" (${voicemail.length} voicemail, ${failed.length} unavailable).`
   );
 
   if (!Number.isNaN(avgRating) && calls.length > 0) {
@@ -75,12 +74,12 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
     ? [
         `Call ${bestCall.lead.name} directly to confirm availability, pricing, and next steps.`,
         'Review the transcripts to capture any follow-up questions or details.',
-        'Run another VADR search if you need backup options or broader coverage.'
+        'Run another VADR search if you need backup options or broader coverage.',
       ]
     : [
         'Adjust the search prompt with more specific qualifiers (price, time, location).',
         'Consider broadening the acceptable distance or service scope.',
-        'Launch another VADR search once the criteria are refined.'
+        'Launch another VADR search once the criteria are refined.',
       ];
 
   return { highlights, recommendation, nextSteps };
@@ -96,26 +95,59 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationName, setLocationName] = useState<string>('');
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isRequestingLocation, setIsRequestingLocation] = useState(true);
 
-  // Request geolocation on mount
+  // Reverse geocode coordinates to get city name
+  const reverseGeocode = async (lat: number, lng: number): Promise<string | null> => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
+      );
+      const data = await response.json();
+      
+      if (data.address) {
+        const city = data.address.city || data.address.town || data.address.village || 
+                     data.address.municipality || data.address.county || '';
+        const state = data.address.state || '';
+        return city && state ? `${city}, ${state}` : city || state || null;
+      }
+      return null;
+    } catch (error) {
+      console.warn('Reverse geocoding error:', error);
+      return null;
+    }
+  };
+
+  // Auto-request location on mount
   useEffect(() => {
     if ('geolocation' in navigator) {
+      setIsRequestingLocation(true);
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
+        async (position) => {
+          const coords = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          });
+          };
+          setUserLocation(coords);
+          
+          const cityName = await reverseGeocode(coords.lat, coords.lng);
+          if (cityName) {
+            setLocationName(cityName);
+          }
+          setIsRequestingLocation(false);
         },
         (error) => {
           console.warn('Geolocation error:', error);
-          setLocationError('Location access denied. You can still search by specifying a location in your query.');
+          setLocationError('Location access denied. Please enable location access to use VADR.');
+          setIsRequestingLocation(false);
         },
-        { timeout: 5000 }
+        { timeout: 10000, enableHighAccuracy: true }
       );
     } else {
-      setLocationError('Geolocation not supported. Please specify a location in your query.');
+      setLocationError('Geolocation not supported in your browser.');
+      setIsRequestingLocation(false);
     }
   }, []);
 
@@ -124,28 +156,26 @@ export default function Home() {
     [candidates, selectedLeadIds]
   );
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const handleSearch = async (searchQuery: string) => {
+    if (!searchQuery.trim()) return;
+
+    if (!userLocation) {
+      setSearchError('Location is required. Please enable location access.');
+      return;
+    }
 
     setIsSearching(true);
     setSearchError(null);
     setCandidates([]);
     setSelectedLeadIds({});
+    setQuery(searchQuery);
 
     try {
-      const searchParams = new URLSearchParams({ q: query.trim() });
-      
-      // Use geolocation if available
-      if (userLocation) {
-        searchParams.append('lat', userLocation.lat.toString());
-        searchParams.append('lng', userLocation.lng.toString());
-      } else {
-        // Try to extract location from query if it mentions a city/area
-        const locationMatch = query.match(/\b(near me|in|at)\s+([A-Z][a-zA-Z\s,]+)/i);
-        if (locationMatch && locationMatch[2]) {
-          searchParams.append('location', locationMatch[2].trim());
-        }
-      }
+      const searchParams = new URLSearchParams({
+        q: searchQuery.trim(),
+        lat: userLocation.lat.toString(),
+        lng: userLocation.lng.toString(),
+      });
 
       const response = await fetch(`/api/search?${searchParams.toString()}`);
       
@@ -156,18 +186,17 @@ export default function Home() {
 
       const results = await response.json();
       
-      // Convert API results to Lead format - use ONLY real data from Perplexity, no fallbacks
       const leads: Lead[] = results.map((result: any, index: number) => ({
         id: `lead-${Date.now()}-${index}`,
         name: result.name,
         phone: result.phone,
         source: result.source ?? 'Search',
         url: result.url ?? undefined,
-        confidence: 0.9, // Not displayed, kept for type compatibility
-        rating: result.rating != null ? Number(result.rating.toFixed(1)) : 0, // Only format if exists
-        reviewCount: 0, // Not used - reviews column removed
-        description: result.description ?? result.address ?? 'No description available',
-        distance: result.distance ?? null, // Preserve distance from API
+        confidence: 0.9,
+        rating: result.rating != null ? Number(result.rating.toFixed(1)) : 0,
+        reviewCount: 0,
+        description: result.description ?? 'No description available',
+        distance: result.distance ?? null,
       }));
 
       if (leads.length === 0) {
@@ -189,7 +218,6 @@ export default function Home() {
     } catch (error) {
       console.error('Search error:', error);
       setSearchError(error instanceof Error ? error.message : 'Failed to search for businesses. Please try again.');
-      // Don't fallback to mock data - show error instead
       setIsSearching(false);
     }
   };
@@ -218,7 +246,7 @@ export default function Home() {
       createdBy: 'demo-user',
       startedAt: Date.now(),
       status: 'calling',
-      calls
+      calls,
     };
 
     setCurrentRun(run);
@@ -264,15 +292,36 @@ export default function Home() {
         <span className="text-gray-900">R</span>
       </div>
 
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-2xl space-y-6">
+        {/* Location status */}
+        <div className="flex flex-col gap-2">
+          {isRequestingLocation ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+              <span>Getting your precise location...</span>
+            </div>
+          ) : userLocation ? (
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-sm text-gray-600">
+                📍 Searching near: <span className="font-medium text-gray-900">{locationName || 'Your location'}</span>
+              </p>
+            </div>
+          ) : locationError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {locationError}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Search bar */}
         <div className="group relative flex items-center rounded-full border border-gray-200 bg-white px-5 py-3 shadow-sm hover:shadow md:px-6">
           <Search className={`mr-3 h-5 w-5 ${isSearching ? 'text-gray-300' : 'text-gray-400'}`} />
           <Input
             value={query}
             onChange={event => setQuery(event.target.value)}
-            onKeyDown={event => event.key === 'Enter' && !isSearching && handleSearch()}
-            placeholder={EXAMPLE_QUERIES[0]}
-            disabled={isSearching}
+            onKeyDown={event => event.key === 'Enter' && !isSearching && userLocation && handleSearch(query)}
+            placeholder="Enter your search query (e.g., 'hair salons with same-day appointments')"
+            disabled={isSearching || isRequestingLocation || !userLocation}
             className="h-8 flex-1 border-0 p-0 text-base placeholder:text-gray-400 focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <div className="ml-3 flex items-center gap-2 text-gray-400">
@@ -285,35 +334,46 @@ export default function Home() {
             )}
           </div>
         </div>
-      </div>
 
-      {searchError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {searchError}
-        </div>
-      )}
+        <Button
+          onClick={() => handleSearch(query)}
+          disabled={isSearching || isRequestingLocation || !userLocation || !query.trim()}
+          variant="secondary"
+          className="w-full rounded bg-gray-100 px-5 py-2 text-sm text-gray-800 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isSearching ? 'Searching...' : 'VADR Search'}
+        </Button>
 
-      <Button
-        onClick={handleSearch}
-        disabled={isSearching || !query.trim()}
-        variant="secondary"
-        className="rounded bg-gray-100 px-5 py-2 text-sm text-gray-800 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isSearching ? 'Searching...' : 'VADR Search'}
-      </Button>
+        {searchError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {searchError}
+          </div>
+        )}
 
-      <div className="space-y-2">
-        <p className="text-xs text-gray-500">Try one of these queries</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {EXAMPLE_QUERIES.map((example, index) => (
-            <button
-              key={index}
-              onClick={() => setQuery(example)}
-              className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition hover:border-gray-900 hover:text-gray-900"
-            >
-              {example}
-            </button>
-          ))}
+        {isSearching && (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+            <span>Searching businesses near you...</span>
+          </div>
+        )}
+
+        {/* Example queries as buttons */}
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">Or try one of these:</p>
+          <div className="flex flex-col gap-2">
+            {EXAMPLE_QUERIES.map((example, index) => (
+              <Button
+                key={index}
+                onClick={() => handleSearch(example)}
+                disabled={isSearching || isRequestingLocation || !userLocation}
+                variant="outline"
+                className="w-full justify-start border-gray-200 px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="mr-2">🎤</span>
+                {example}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -434,7 +494,7 @@ export default function Home() {
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700">
               <Sparkles className="h-5 w-5" />
             </div>
-            <h2 className="text-3xl font-semibold text-gray-900">Summary for “{currentRun.query}”</h2>
+            <h2 className="text-3xl font-semibold text-gray-900">Summary for "{currentRun.query}"</h2>
             <p className="text-sm text-gray-500">
               VADR completed {currentRun.calls.length} calls and synthesized the key takeaways for you.
             </p>
@@ -544,4 +604,3 @@ export default function Home() {
     </div>
   );
 }
-
