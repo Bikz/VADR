@@ -47,6 +47,11 @@ User Query → Web Search → Find Phone Numbers → 6 Parallel Calls → Live T
 # Install dependencies
 bun install
 
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local and add your Perplexity API key:
+# PERPLEXITY_API_KEY=your-api-key-here
+
 # Run development server
 bun run dev
 
@@ -55,6 +60,16 @@ bun run build
 ```
 
 Visit `http://localhost:3000` and try an example query!
+
+### Environment Variables
+
+Create a `.env.local` file in the root directory with:
+
+```env
+PERPLEXITY_API_KEY=your-perplexity-api-key-here
+```
+
+Get your Perplexity API key from: https://www.perplexity.ai/
 
 ## 📋 Example Queries
 
