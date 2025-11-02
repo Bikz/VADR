@@ -16,6 +16,7 @@ const testLead: Lead = {
   phone: '+16478258500', // Test phone from env
   rating: 4.5,
   reviewCount: 120,
+  confidence: 0.9,
   address: '123 Test Street, San Francisco, CA',
   description: 'A premium spa offering massage and wellness services',
   source: 'test',
