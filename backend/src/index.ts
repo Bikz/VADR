@@ -11,7 +11,14 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 const fastify = Fastify({
   logger: {
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    level: 'info', // Use info level in both dev and prod so we can see CORS logs
+    transport: process.env.NODE_ENV === 'production' ? undefined : {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname',
+      },
+    },
   },
 });
 
@@ -70,46 +77,85 @@ const matchesOrigin = (origin: string | undefined): boolean => {
   if (matchesExplicit) return true;
   
   // Check Vercel domains - originHostname should end with .vercel.app or .vercel.sh
-  return vercelDomains.some((domain) => {
+  const matchesVercel = vercelDomains.some((domain) => {
     if (domain.startsWith('*.')) {
       const suffix = domain.slice(1); // remove leading * to get .vercel.app
       return originHostname.endsWith(suffix);
     }
     return originHostname === domain;
   });
+  
+  return matchesVercel;
 };
 
-// Register CORS with function-based origin checking
+// Build the complete list of allowed origins for CORS
+const buildAllowedOrigins = (): (string | RegExp)[] => {
+  const origins: (string | RegExp)[] = [];
+  
+  // Add explicit allowed origins
+  origins.push(...allowedOrigins);
+  
+  // Add Vercel domain patterns as regex
+  origins.push(/^https:\/\/.*\.vercel\.app$/);
+  origins.push(/^https:\/\/.*\.vercel\.sh$/);
+  
+  // Always allow localhost for development
+  origins.push(/^http:\/\/localhost:\d+$/);
+  origins.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+  
+  return origins;
+};
+
+// Register CORS with explicit origin list (more reliable than callback)
 await fastify.register(cors, {
-  origin: (origin, callback) => {
-    // Handle requests with no origin (server-to-server, curl, etc.)
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-    
-    // Check if origin is allowed
-    if (matchesOrigin(origin)) {
-      fastify.log.debug({ origin }, 'CORS: allowing origin');
-      // Return the specific origin to set Access-Control-Allow-Origin header
-      callback(null, origin);
-    } else {
-      fastify.log.warn({ origin }, 'CORS: blocking origin');
-      // Return false to deny the origin
-      callback(null, false);
-    }
-  },
+  origin: buildAllowedOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
   exposedHeaders: ['Content-Type'],
-  preflight: true, // Explicitly enable preflight handling
-  strictPreflight: false, // Don't require preflight for all requests
+  preflight: true,
+  strictPreflight: false,
+});
+
+// Add manual CORS logging via hook
+fastify.addHook('onRequest', async (request, reply) => {
+  const origin = request.headers.origin;
+  if (origin) {
+    const isAllowed = matchesOrigin(origin);
+    fastify.log.info({ 
+      origin, 
+      isAllowed, 
+      path: request.url,
+      method: request.method 
+    }, 'CORS: request received');
+  }
 });
 
 // Health check
 fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
+});
+
+// CORS test endpoint
+fastify.get('/cors-test', async (request, reply) => {
+  const origin = request.headers.origin;
+  const hostname = origin ? (() => {
+    try {
+      return new URL(origin).hostname;
+    } catch {
+      return 'invalid';
+    }
+  })() : 'no-origin';
+  
+  return {
+    status: 'ok',
+    origin,
+    hostname,
+    matchesOrigin: matchesOrigin(origin),
+    allowedOrigins,
+    vercelDomains,
+    message: 'If you see this from the browser, CORS is working!',
+  };
 });
 
 // Register routes
