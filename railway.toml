@@ -1,0 +1,13 @@
+[build]
+builder = "nixpacks"
+watchPaths = ["backend/**", "packages/shared/**"]
+
+[deploy]
+startCommand = "cd backend && bun run start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[healthcheck]
+path = "/health"
+timeout = 10
+interval = 30

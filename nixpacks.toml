@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "bun", "openssl_3"]
+
+[phases.install]
+cmds = ["bun install", "cd backend && bunx prisma generate"]
+
+[phases.build]
+cmds = ["bun run --cwd packages/shared build", "cd backend && bun run build"]
+
+[start]
+cmd = "cd backend && bun run start"
