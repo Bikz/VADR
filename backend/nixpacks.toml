@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "bun", "openssl"]
+nixPkgs = ["nodejs_20", "bun", "openssl_3"]
 
 [phases.install]
 cmds = ["bun install", "bunx prisma generate"]
