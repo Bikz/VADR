@@ -80,7 +80,7 @@ class CallService {
             url: answerUrl,
             statusCallback,
             statusCallbackMethod: 'POST',
-            statusCallbackEvent: ['queued', 'initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer'],
+            statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
             machineDetection: 'DetectMessageEnd',
             record: false,
           });
