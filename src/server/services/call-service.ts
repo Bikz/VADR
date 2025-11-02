@@ -57,6 +57,17 @@ class CallService {
       .map((callId) => this.store.getCall(callId))
       .filter((value): value is NonNullable<typeof value> => Boolean(value));
 
+    console.log('[call-service] creating outbound calls', {
+      runId,
+      fromNumber,
+      baseUrl,
+      calls: callSessions.map((callSession) => ({
+        callId: callSession.call.id,
+        leadId: callSession.call.leadId,
+        to: callSession.call.lead.phone,
+      })),
+    });
+
     await Promise.all(
       callSessions.map(async (callSession) => {
         try {
@@ -74,9 +85,22 @@ class CallService {
             record: false,
           });
 
+          console.log('[call-service] call created', {
+            runId,
+            callId: callSession.call.id,
+            to: callSession.call.lead.phone,
+            twilioSid: result.sid,
+            status: result.status,
+          });
+
           this.store.attachCallSid(callSession.call.id, result.sid);
         } catch (error) {
-          console.error('Failed to start call', error);
+          console.error('[call-service] failed to start call', {
+            runId,
+            callId: callSession.call.id,
+            to: callSession.call.lead.phone,
+            error,
+          });
           this.store.updateCallState(callSession.call.id, 'failed');
         }
       })
@@ -112,6 +136,11 @@ class CallService {
 
       try {
         const conversation = this.store.getConversationHistory(callId);
+        console.log('[call-service] received speech', {
+          runId,
+          callId,
+          speech: speechResult.trim(),
+        });
         replyText = await generateAgentReply({
           conversation,
           prep: runSession.prep,
@@ -119,13 +148,23 @@ class CallService {
           lastUtterance: speechResult.trim(),
         });
       } catch (error) {
-        console.error('Failed to generate agent reply', error);
+        console.error('[call-service] failed to generate agent reply', {
+          runId,
+          callId,
+          error,
+        });
         replyText = DEFAULT_REPLY;
       }
     }
 
     const aiTurn = createTranscriptTurn(callId, 'ai', replyText);
     this.store.appendTranscript(callId, aiTurn);
+
+    console.log('[call-service] responding with ai turn', {
+      runId,
+      callId,
+      replyText,
+    });
 
     return { replyText };
   }
@@ -141,6 +180,16 @@ class CallService {
     }
 
     const { state } = this.mapStatus(callStatus, answeredBy);
+
+    console.log('[call-service] status callback', {
+      runId,
+      callId,
+      callSid,
+      callStatus,
+      answeredBy,
+      mappedState: state,
+      callDuration,
+    });
 
     if (state === 'completed') {
       const durationSeconds = Number.parseInt(callDuration ?? '0', 10);
@@ -166,8 +215,13 @@ class CallService {
     if (twilioSid) {
       try {
         await getTwilioClient().calls(twilioSid).update({ status: 'completed' });
+        console.log('[call-service] ended call via Twilio', { callId, twilioSid });
       } catch (error) {
-        console.error('Failed to end call via Twilio', error);
+        console.error('[call-service] failed to end call via Twilio', {
+          callId,
+          twilioSid,
+          error,
+        });
       }
     }
 
@@ -221,4 +275,3 @@ class CallService {
 
 export const callService = new CallService(callStore);
 export type { CallEvent };
-
