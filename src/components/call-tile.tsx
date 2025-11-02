@@ -123,7 +123,7 @@ export function CallTile({ call, onUpdate, compact = false }: CallTileProps) {
           )}
 
           {call.transcript.map((turn) => (
-            <div key={turn.id} className="space-y-1">
+            <div key={`${turn.id}-${turn.t0_ms}`} className="space-y-1">
               <div className="flex items-center gap-2">
                 <span
                   className={`text-[0.6rem] font-semibold uppercase tracking-[0.25em] ${

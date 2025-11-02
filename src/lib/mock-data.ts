@@ -119,9 +119,13 @@ export function generateTranscriptTurn(
 ): TranscriptTurn {
   const t0 = baseTime + turnIndex * 3000 + Math.random() * 2000;
   const duration = text.length * 50 + Math.random() * 500;
+  const uniqueSuffix =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   return {
-    id: `${callId}-turn-${turnIndex}`,
+    id: `${callId}-turn-${turnIndex}-${uniqueSuffix}`,
     speaker,
     text,
     timestamp: Date.now(),

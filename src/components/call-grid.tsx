@@ -17,49 +17,28 @@ const isTerminal = (call: Call) => TERMINAL_STATES.includes(call.state);
 
 export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
   const [calls, setCalls] = useState<Call[]>(run.calls);
-  const runRef = useRef(run);
   const completionRef = useRef(run.status === 'completed');
-
-  useEffect(() => {
-    runRef.current = run;
-  }, [run]);
+  const signatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     setCalls(run.calls);
     completionRef.current = run.status === 'completed';
+    signatureRef.current = null;
   }, [run.id]);
 
-  const syncRun = useCallback(
-    (nextCalls: Call[]) => {
-      const status = nextCalls.every(isTerminal) ? 'completed' : 'calling';
-      const updatedRun: VADRRun = { ...runRef.current, calls: nextCalls, status };
-      onRunUpdate?.(updatedRun);
-
-      if (status === 'completed' && !completionRef.current) {
-        completionRef.current = true;
-        onComplete?.(nextCalls);
-      }
-    },
-    [onComplete, onRunUpdate]
-  );
-
-  const setCallsAndNotify = useCallback(
+  const updateCalls = useCallback(
     (updater: (previous: Call[]) => Call[]) => {
       setCalls(prev => {
         const next = updater(prev);
-        if (next === prev) {
-          return prev;
-        }
-        syncRun(next);
-        return next;
+        return next === prev ? prev : next;
       });
     },
-    [syncRun]
+    []
   );
 
   const updateCallState = useCallback(
     (callId: string, newState: CallState, extra: Partial<Call> = {}) => {
-      setCallsAndNotify(prev =>
+      updateCalls(prev =>
         prev.map(call => {
           if (call.id !== callId) return call;
 
@@ -75,7 +54,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
         })
       );
     },
-    [setCallsAndNotify]
+    [updateCalls]
   );
 
   const startTranscriptSimulation = useCallback(
@@ -99,7 +78,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
           baseTime
         );
 
-        setCallsAndNotify(prev =>
+        updateCalls(prev =>
           prev.map(call =>
             call.id === callId
               ? {
@@ -120,7 +99,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
             baseTime
           );
 
-          setCallsAndNotify(prev =>
+          updateCalls(prev =>
             prev.map(call =>
               call.id === callId
                 ? {
@@ -144,26 +123,8 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
 
       setTimeout(addNextTurn, 600);
     },
-    [setCallsAndNotify, updateCallState]
+    [updateCallState, updateCalls]
   );
-
-  useEffect(() => {
-    if (run.status === 'completed') {
-      return;
-    }
-
-    const kickoff = setTimeout(() => {
-      setCallsAndNotify(prev =>
-        prev.map(call =>
-          call.state === 'idle'
-            ? { ...call, state: 'dialing', startedAt: Date.now() }
-            : call
-        )
-      );
-    }, 500);
-
-    return () => clearTimeout(kickoff);
-  }, [run.id, run.status, setCallsAndNotify]);
 
   useEffect(() => {
     if (run.status === 'completed') {
@@ -172,28 +133,87 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
 
     const timers: NodeJS.Timeout[] = [];
 
-    calls.forEach((call, index) => {
-      if (call.state === 'dialing') {
-        const timer = setTimeout(() => {
-          updateCallState(call.id, 'ringing');
-        }, 1300 + index * 250);
-        timers.push(timer);
-      } else if (call.state === 'ringing') {
-        const timer = setTimeout(() => {
-          const connects = Math.random() > 0.2;
-          if (connects) {
-            updateCallState(call.id, 'connected');
-            startTranscriptSimulation(call.id);
-          } else {
-            updateCallState(call.id, 'voicemail');
+    const kickoff = setTimeout(() => {
+      updateCalls(prev =>
+        prev.map((call, index) => {
+          if (call.state !== 'idle') {
+            return call;
           }
-        }, 1800 + index * 350);
-        timers.push(timer);
-      }
-    });
 
-    return () => timers.forEach(clearTimeout);
-  }, [calls, run.status, startTranscriptSimulation, updateCallState]);
+          const startedAt = Date.now();
+
+          const ringingTimer = setTimeout(() => {
+            updateCallState(call.id, 'ringing');
+
+            const outcomeTimer = setTimeout(() => {
+              const connects = Math.random() > 0.2;
+              if (connects) {
+                updateCallState(call.id, 'connected');
+                startTranscriptSimulation(call.id);
+              } else {
+                updateCallState(call.id, 'voicemail');
+              }
+            }, 1800 + index * 350);
+
+            timers.push(outcomeTimer);
+          }, 1300 + index * 250);
+
+          timers.push(ringingTimer);
+
+          return { ...call, state: 'dialing', startedAt };
+        })
+      );
+    }, 500);
+
+    timers.push(kickoff);
+
+    return () => {
+      timers.forEach(clearTimeout);
+    };
+  }, [run.id, run.status, startTranscriptSimulation, updateCallState, updateCalls]);
+
+  useEffect(() => {
+    const status = calls.every(isTerminal) ? 'completed' : 'calling';
+
+    const signature = calls
+      .map(call =>
+        [
+          call.id,
+          call.state,
+          call.transcript.length,
+          call.duration,
+          call.sentiment,
+          call.startedAt ?? 0,
+          call.endedAt ?? 0
+        ].join('-')
+      )
+      .join('|');
+
+    const shouldEmit =
+      signature !== signatureRef.current || status !== run.status;
+
+    if (shouldEmit) {
+      signatureRef.current = signature;
+
+      onRunUpdate?.({
+        id: run.id,
+        query: run.query,
+        createdBy: run.createdBy,
+        startedAt: run.startedAt,
+        status,
+        calls
+      });
+
+      if (status === 'completed' && !completionRef.current) {
+        completionRef.current = true;
+        onComplete?.(calls);
+      }
+
+      if (status !== 'completed') {
+        completionRef.current = false;
+      }
+    }
+  }, [calls, onComplete, onRunUpdate, run.createdBy, run.id, run.query, run.startedAt, run.status]);
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 auto-rows-[1fr]">
@@ -202,7 +222,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
           key={call.id}
           call={call}
           onUpdate={updates =>
-            setCallsAndNotify(prev =>
+            updateCalls(prev =>
               prev.map(existing =>
                 existing.id === call.id ? { ...existing, ...updates } : existing
               )
