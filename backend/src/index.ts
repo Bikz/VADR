@@ -21,9 +21,22 @@ const allowedOrigins = rawOrigins
   .map((value) => value.trim())
   .filter(Boolean);
 
+// Add Vercel domains to allowed origins for preview deployments
+const vercelDomains = [
+  '*.vercel.app',
+  '*.vercel.sh',
+];
+
 const matchesOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true; // Allow server-to-server / same-origin
-  return allowedOrigins.some((allowed) => {
+  
+  // Always allow localhost in development
+  if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    return true;
+  }
+  
+  // Check explicitly allowed origins
+  const matchesExplicit = allowedOrigins.some((allowed) => {
     if (allowed === '*') return true;
     if (allowed.startsWith('http')) {
       return origin === allowed;
@@ -40,6 +53,18 @@ const matchesOrigin = (origin: string | undefined): boolean => {
       return false;
     }
   });
+  
+  if (matchesExplicit) return true;
+  
+  // Check Vercel domains
+  const originHostname = new URL(origin).hostname;
+  return vercelDomains.some((domain) => {
+    if (domain.startsWith('*.')) {
+      const suffix = domain.slice(1);
+      return originHostname.endsWith(suffix);
+    }
+    return originHostname === domain;
+  });
 };
 
 // Register CORS
@@ -48,10 +73,13 @@ await fastify.register(cors, {
     if (matchesOrigin(origin)) {
       cb(null, true);
     } else {
+      fastify.log.warn({ origin }, 'CORS blocked origin');
       cb(new Error(`Origin ${origin ?? '<unknown>'} is not allowed by CORS`));
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 });
 
 // Health check
@@ -70,6 +98,8 @@ try {
   await fastify.listen({ port: PORT, host: HOST });
   console.log(`🚀 VADR Backend server listening on ${HOST}:${PORT}`);
   console.log(`📍 Health check: http://${HOST}:${PORT}/health`);
+  console.log(`🌐 CORS configured for origins: ${allowedOrigins.join(', ') || 'none (using defaults + Vercel)'}`);
+  console.log(`🌐 Vercel domains allowed: ${vercelDomains.join(', ')}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

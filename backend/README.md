@@ -35,8 +35,10 @@ Required variables:
 - `DATABASE_URL` - PostgreSQL connection string
 - `GOOGLE_PLACES_API_KEY` - Google Places API key
 
-Optional variables (for after-call enrichment):
-- `CAPTAIN_API_KEY` - Captain API key (default: `cap_dev_ntWWrmra24fjcsBgTrtyCeFbZqiEXzBL`)
+Optional variables:
+- `FRONTEND_URL` or `FRONTEND_URLS` - Comma-separated list of allowed frontend URLs for CORS (defaults to `http://localhost:3000`). Vercel domains (`*.vercel.app`, `*.vercel.sh`) are automatically allowed.
+- `PUBLIC_BASE_URL` - Public URL of the backend (used for Twilio webhooks)
+- `CAPTAIN_API_KEY` - Captain API key (for after-call enrichment, default: `cap_dev_ntWWrmra24fjcsBgTrtyCeFbZqiEXzBL`)
 - `CAPTAIN_ORGANIZATION_ID` - Captain organization ID (default: `armaanb7@ucla.edu`)
 
 ### Production Build
@@ -89,11 +91,13 @@ railway up
 railway domain
 ```
 
-7. Update environment variables with your Railway URL:
+7. Update environment variables with your Railway URL and frontend URL:
 ```bash
 railway variables set PUBLIC_BASE_URL=https://your-app.railway.app
 railway variables set FRONTEND_URL=https://vadr-five.vercel.app
 ```
+
+**Note**: The backend automatically allows all Vercel domains (`*.vercel.app`, `*.vercel.sh`) for CORS, so you don't need to set `FRONTEND_URL` if you're only deploying to Vercel. However, setting it explicitly can help with logging and is recommended.
 
 ## API Routes
 
