@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "bun run --cwd ../shared build && tsc && tsc-alias",
+    "build": "bun run --cwd ../shared build && bun run prisma:generate && tsc && tsc-alias",
     "start": "bun run dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "bunx prisma generate"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
