@@ -1,9 +1,8 @@
 # 1. Base image
-FROM oven/bun:1.1-debian AS base
+FROM oven/bun:1.2-debian AS base
 
-# Install OpenSSL 3 AND the development headers
+# Ensure OpenSSL headers are available so Prisma detects the right binary
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 \
     libssl-dev \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -47,6 +46,9 @@ COPY --from=base /app/packages/backend ./packages/backend
 
 # Copy the built shared package
 COPY --from=base /app/packages/shared ./packages/shared
+
+# Copy root workspace manifest for dependency resolution in production
+COPY --from=base /app/package.json ./package.json
 
 # Copy the generated Prisma engine
 COPY --from=base /app/node_modules/.prisma/client ./node_modules/.prisma/client
