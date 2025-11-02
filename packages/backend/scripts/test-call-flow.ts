@@ -5,7 +5,7 @@
  * Simulates a complete call without actually calling Twilio
  */
 
-import type { CallPrep, Lead } from '../src/types';
+import type { CallPrep, Lead } from '@vadr/shared';
 
 const BASE_URL = 'http://localhost:3001';
 
