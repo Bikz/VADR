@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 interface WaveformProps {
   isActive: boolean;
   isTakenOver?: boolean;
+  compact?: boolean;
 }
 
-export function Waveform({ isActive, isTakenOver }: WaveformProps) {
+export function Waveform({ isActive, isTakenOver, compact = false }: WaveformProps) {
   const [bars, setBars] = useState<number[]>(Array(24).fill(0));
 
   useEffect(() => {
@@ -23,14 +24,16 @@ export function Waveform({ isActive, isTakenOver }: WaveformProps) {
     return () => clearInterval(interval);
   }, [isActive]);
 
-  const color = isTakenOver ? '#f97316' : '#6C5CE7';
+  const color = isTakenOver ? '#1f2937' : '#0a0a0a';
+  const heightClass = compact ? 'h-6' : 'h-8';
+  const barWidth = compact ? 'w-[3px]' : 'w-1';
 
   return (
-    <div className="flex items-center justify-center gap-0.5 h-8 bg-slate-950/50 rounded">
+    <div className={`flex ${heightClass} items-center justify-center gap-0.5 rounded bg-gray-100`}>
       {bars.map((height, i) => (
         <div
           key={i}
-          className="w-1 rounded-full transition-all duration-100"
+          className={`${barWidth} rounded-full transition-all duration-100`}
           style={{
             height: `${4 + height * 20}px`,
             backgroundColor: color,

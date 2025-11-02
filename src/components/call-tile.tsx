@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, Volume2, Hand, Play, Pause } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2, Hand, Play } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,9 +13,10 @@ import { Waveform } from './waveform';
 interface CallTileProps {
   call: Call;
   onUpdate: (updates: Partial<Call>) => void;
+  compact?: boolean;
 }
 
-export function CallTile({ call, onUpdate }: CallTileProps) {
+export function CallTile({ call, onUpdate, compact = false }: CallTileProps) {
   const [duration, setDuration] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -24,12 +25,12 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
       const interval = setInterval(() => {
         setDuration(prev => prev + 1);
       }, 1000);
+
       return () => clearInterval(interval);
     }
   }, [call.state]);
 
   useEffect(() => {
-    // Auto-scroll to bottom when new transcript arrives
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -53,52 +54,67 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
     onUpdate({ state: 'completed' });
   };
 
+  const cardHeight = compact ? 'h-[340px]' : 'h-[500px]';
+  const headerSpacing = compact ? 'space-y-2 p-3' : 'space-y-3 p-4';
+  const transcriptPadding = compact ? 'p-3' : 'p-4';
+  const transcriptStack = compact ? 'space-y-2' : 'space-y-3';
+  const summarySpacing = compact ? 'mt-3 pt-3' : 'mt-4 pt-4';
+  const emptyStatePadding = compact ? 'py-4 text-[0.7rem]' : 'py-8 text-xs';
+  const transcriptText = compact ? 'p-2.5 text-xs leading-relaxed' : 'p-3 text-sm leading-relaxed';
+
   return (
-    <Card className="bg-slate-900/50 border-slate-800 overflow-hidden flex flex-col h-[500px]">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-800 space-y-3">
+    <Card className={`flex flex-col overflow-hidden border border-gray-200 bg-white shadow-sm ${cardHeight}`}>
+      <div className={`border-b border-gray-200 bg-white ${headerSpacing}`}>
         <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-white truncate">
+          <div className="min-w-0 flex-1">
+            <h3 className={`truncate font-semibold text-gray-900 ${compact ? 'text-sm' : 'text-base'}`}>
               {call.lead.name}
             </h3>
-            <p className="text-xs text-slate-400 font-mono">{call.lead.phone}</p>
+            <p className="font-mono text-[0.7rem] text-gray-500">{call.lead.phone}</p>
           </div>
           <Badge
             variant="outline"
-            className={`${getStateColor(call.state)} border capitalize text-xs shrink-0`}
+            className={`${getStateColor(call.state)} shrink-0 text-[0.6rem] uppercase tracking-[0.25em]`}
           >
             {call.state}
           </Badge>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <Phone className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-1.5 text-[0.7rem] text-gray-500">
+            <Phone className="h-3.5 w-3.5" />
             <span className="font-mono">{formatDuration(duration)}</span>
           </div>
           {call.state === 'connected' && (
-            <Badge variant="outline" className={`${getSentimentColor(call.sentiment)} text-xs`}>
+            <Badge
+              variant="outline"
+              className={`${getSentimentColor(call.sentiment)} text-[0.6rem] uppercase tracking-[0.25em]`}
+            >
               {call.sentiment}
             </Badge>
           )}
           <div className="flex-1" />
-          <Badge variant="outline" className="text-xs text-slate-400 border-slate-700">
+          <Badge
+            variant="outline"
+            className="border-gray-200 text-[0.6rem] uppercase tracking-[0.25em] text-gray-500"
+          >
             {call.lead.source}
           </Badge>
         </div>
 
-        {/* Waveform */}
         {(call.state === 'connected' || call.state === 'ringing') && (
-          <Waveform isActive={call.state === 'connected'} isTakenOver={call.isTakenOver} />
+          <Waveform
+            isActive={call.state === 'connected'}
+            isTakenOver={call.isTakenOver}
+            compact={compact}
+          />
         )}
       </div>
 
-      {/* Transcript */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="space-y-3">
+      <ScrollArea className={`flex-1 bg-white ${transcriptPadding}`} ref={scrollRef}>
+        <div className={transcriptStack}>
           {call.transcript.length === 0 && call.state !== 'completed' && (
-            <p className="text-xs text-slate-500 text-center py-8">
+            <p className={`${emptyStatePadding} text-center text-gray-500`}>
               {call.state === 'dialing' && 'Dialing...'}
               {call.state === 'ringing' && 'Ringing...'}
               {call.state === 'voicemail' && 'Voicemail detected'}
@@ -109,58 +125,59 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
           {call.transcript.map((turn) => (
             <div key={turn.id} className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-medium ${
-                  turn.speaker === 'ai' ? 'text-[#6C5CE7]' : 'text-emerald-400'
-                }`}>
+                <span
+                  className={`text-[0.6rem] font-semibold uppercase tracking-[0.25em] ${
+                    turn.speaker === 'ai' ? 'text-gray-900' : 'text-gray-500'
+                  }`}
+                >
                   {turn.speaker === 'ai' ? 'VADR' : call.lead.name.split(' ')[0]}
                 </span>
               </div>
-              <p className="text-sm text-slate-300 bg-slate-800/50 rounded-lg p-2.5 font-mono leading-relaxed">
+              <p className={`rounded-lg border border-gray-200 bg-gray-50 text-gray-700 ${transcriptText}`}>
                 {turn.text}
               </p>
             </div>
           ))}
 
           {call.state === 'completed' && call.transcript.length > 0 && (
-            <div className="pt-4 border-t border-slate-800 mt-4">
-              <p className="text-xs font-medium text-slate-400 mb-2">Extracted Data</p>
-              <div className="space-y-1 text-xs">
+            <div className={`border-t border-gray-200 ${summarySpacing}`}>
+              <p className="mb-1 text-[0.6rem] font-medium uppercase tracking-[0.3em] text-gray-500">Summary</p>
+              <div className="space-y-1 text-[0.7rem] text-gray-500">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Duration:</span>
-                  <span className="text-slate-300">{formatDuration(duration)}</span>
+                  <span>Duration</span>
+                  <span className="text-gray-700">{formatDuration(duration)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Turns:</span>
-                  <span className="text-slate-300">{call.transcript.length}</span>
+                  <span>Turns</span>
+                  <span className="text-gray-700">{call.transcript.length}</span>
                 </div>
               </div>
             </div>
           )}
 
           {call.state === 'voicemail' && (
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/20 mb-3">
-                <MicOff className="w-6 h-6 text-orange-400" />
+            <div className="py-6 text-center">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50">
+                <MicOff className="h-5 w-5 text-gray-500" />
               </div>
-              <p className="text-sm text-slate-400">Voicemail detected</p>
-              <p className="text-xs text-slate-500 mt-1">Left automated message</p>
+              <p className="text-sm text-gray-600">Voicemail detected</p>
+              <p className="mt-1 text-xs text-gray-500">Left automated message</p>
             </div>
           )}
 
           {call.state === 'failed' && (
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-500/20 mb-3">
-                <PhoneOff className="w-6 h-6 text-red-400" />
+            <div className="py-6 text-center">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50">
+                <PhoneOff className="h-5 w-5 text-gray-500" />
               </div>
-              <p className="text-sm text-slate-400">Call failed</p>
-              <p className="text-xs text-slate-500 mt-1">No answer or busy</p>
+              <p className="text-sm text-gray-600">Call failed</p>
+              <p className="mt-1 text-xs text-gray-500">No answer or busy</p>
             </div>
           )}
         </div>
       </ScrollArea>
 
-      {/* Controls */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/50">
+      <div className="border-t border-gray-200 bg-gray-50 p-3">
         <div className="flex items-center gap-2">
           {call.state === 'connected' && !call.isTakenOver && (
             <>
@@ -170,19 +187,19 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
                 onClick={handleListen}
                 className={`flex-1 h-8 text-xs ${
                   call.isListening
-                    ? 'bg-[#6C5CE7]/20 border-[#6C5CE7] text-[#6C5CE7]'
-                    : 'border-slate-700 text-slate-300'
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-300 text-gray-600 hover:border-gray-400'
                 }`}
               >
-                <Volume2 className="w-3.5 h-3.5 mr-1.5" />
+                <Volume2 className="mr-1.5 h-3.5 w-3.5" />
                 {call.isListening ? 'Listening' : 'Listen'}
               </Button>
               <Button
                 size="sm"
                 onClick={handleTakeOver}
-                className="flex-1 h-8 text-xs bg-[#6C5CE7] hover:bg-[#5849c4]"
+                className="flex-1 h-8 text-xs bg-black text-white hover:bg-gray-900"
               >
-                <Hand className="w-3.5 h-3.5 mr-1.5" />
+                <Hand className="mr-1.5 h-3.5 w-3.5" />
                 Take Over
               </Button>
             </>
@@ -193,17 +210,17 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 h-8 text-xs border-slate-700 text-slate-300"
+                className="flex-1 h-8 text-xs border-gray-900 bg-gray-900 text-white"
               >
-                <Mic className="w-3.5 h-3.5 mr-1.5" />
+                <Mic className="mr-1.5 h-3.5 w-3.5" />
                 You're Live
               </Button>
               <Button
                 size="sm"
                 onClick={handleTakeOver}
-                className="flex-1 h-8 text-xs bg-orange-600 hover:bg-orange-700"
+                className="flex-1 h-8 text-xs border border-gray-300 bg-white text-gray-700 hover:border-gray-400"
               >
-                <Play className="w-3.5 h-3.5 mr-1.5" />
+                <Play className="mr-1.5 h-3.5 w-3.5" />
                 Resume AI
               </Button>
             </>
@@ -214,16 +231,14 @@ export function CallTile({ call, onUpdate }: CallTileProps) {
               size="sm"
               variant="outline"
               onClick={handleEndCall}
-              className="h-8 px-3 border-red-900/50 text-red-400 hover:bg-red-950/50"
+              className="h-8 px-3 border-gray-300 text-gray-600 hover:border-gray-400"
             >
-              <PhoneOff className="w-3.5 h-3.5" />
+              <PhoneOff className="h-3.5 w-3.5" />
             </Button>
           )}
 
           {(call.state === 'completed' || call.state === 'voicemail' || call.state === 'failed') && (
-            <p className="text-xs text-slate-500 text-center flex-1">
-              Call ended
-            </p>
+            <p className="flex-1 text-center text-xs text-gray-500">Call ended</p>
           )}
         </div>
       </div>

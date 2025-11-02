@@ -27,6 +27,9 @@ export interface Lead {
   source: string;
   url?: string;
   confidence: number;
+  rating: number;
+  reviewCount: number;
+  description: string;
 }
 
 export interface Call {

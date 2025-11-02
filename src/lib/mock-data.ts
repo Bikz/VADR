@@ -13,16 +13,32 @@ const businessNames = [
   "The Grooming Lounge"
 ];
 
-const sources = ["Google Places", "Yelp", "Yellow Pages"];
+const businessDescriptions = [
+  "Full-service spa offering Swedish, deep tissue, and hot stone massages with same-day availability.",
+  "Neighborhood salon specializing in cuts, color, and styling with flexible booking.",
+  "Licensed drywall specialists handling repairs and full room resurfacing on short timelines.",
+  "Modern barbershop focused on fades, beard trims, and walk-in availability.",
+  "Therapeutic massage studio with online booking and bundled session pricing.",
+  "Family-owned contractor handling drywall, paint, and light renovations for residential jobs.",
+  "Boutique salon with senior stylists and express blowout services.",
+  "Day spa featuring aromatherapy, couples massages, and loyalty pricing tiers.",
+  "General home repair crew managing drywall, patching, and finishing work.",
+  "Upscale grooming lounge offering straight-razor shaves and same-day appointments."
+];
+
+const sources = ["Google", "Yelp", "Google", "Yelp", "Google"]; // bias toward major review platforms
 
 export function generateMockLeads(count: number): Lead[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `lead-${i + 1}`,
     name: businessNames[i % businessNames.length],
     phone: `(${Math.floor(Math.random() * 900) + 100}) ${Math.floor(Math.random() * 900) + 100}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-    source: sources[Math.floor(Math.random() * sources.length)],
+    source: sources[i % sources.length],
     url: `https://example.com/business-${i + 1}`,
-    confidence: 0.7 + Math.random() * 0.3
+    confidence: 0.7 + Math.random() * 0.3,
+    rating: Number((4 + Math.random() * 1).toFixed(1)),
+    reviewCount: 40 + Math.floor(Math.random() * 260),
+    description: businessDescriptions[i % businessDescriptions.length]
   }));
 }
 
@@ -144,20 +160,30 @@ export const mockCallPrep: CallPrep = {
 
 export function getStateColor(state: CallState): string {
   switch (state) {
-    case 'dialing': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-    case 'ringing': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-    case 'connected': return 'bg-green-500/20 text-green-400 border-green-500/30';
-    case 'voicemail': return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-    case 'completed': return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-    case 'failed': return 'bg-red-500/20 text-red-400 border-red-500/30';
-    default: return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+    case 'dialing':
+      return 'border border-gray-300 bg-gray-100 text-gray-600';
+    case 'ringing':
+      return 'border border-gray-200 bg-gray-50 text-gray-600';
+    case 'connected':
+      return 'border border-gray-900 bg-gray-900 text-white';
+    case 'voicemail':
+      return 'border border-gray-300 bg-gray-200 text-gray-700';
+    case 'completed':
+      return 'border border-gray-200 bg-gray-100 text-gray-500';
+    case 'failed':
+      return 'border border-gray-300 bg-gray-200 text-gray-700';
+    default:
+      return 'border border-gray-200 bg-gray-100 text-gray-500';
   }
 }
 
 export function getSentimentColor(sentiment: Sentiment): string {
   switch (sentiment) {
-    case 'positive': return 'bg-green-500/20 text-green-400';
-    case 'negative': return 'bg-red-500/20 text-red-400';
-    default: return 'bg-slate-500/20 text-slate-400';
+    case 'positive':
+      return 'border border-gray-900 bg-gray-900 text-white';
+    case 'negative':
+      return 'border border-gray-300 bg-gray-200 text-gray-700';
+    default:
+      return 'border border-gray-200 bg-gray-100 text-gray-600';
   }
 }

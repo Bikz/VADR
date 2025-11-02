@@ -1,145 +1,214 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { VADRRun, Call, CallState } from '@/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Call, CallState, VADRRun } from '@/types';
 import { CallTile } from './call-tile';
-import { getRandomTranscriptSet, generateTranscriptTurn } from '@/lib/mock-data';
+import { generateTranscriptTurn, getRandomTranscriptSet } from '@/lib/mock-data';
 
 interface CallGridProps {
   run: VADRRun;
-  onRunUpdate: (run: VADRRun) => void;
+  onRunUpdate?: (run: VADRRun) => void;
+  onComplete?: (calls: Call[]) => void;
 }
 
-export function CallGrid({ run, onRunUpdate }: CallGridProps) {
-  const [calls, setCalls] = useState(run.calls);
+const TERMINAL_STATES: CallState[] = ['completed', 'failed', 'voicemail'];
+
+const isTerminal = (call: Call) => TERMINAL_STATES.includes(call.state);
+
+export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
+  const [calls, setCalls] = useState<Call[]>(run.calls);
+  const runRef = useRef(run);
+  const completionRef = useRef(run.status === 'completed');
+
+  useEffect(() => {
+    runRef.current = run;
+  }, [run]);
 
   useEffect(() => {
     setCalls(run.calls);
+    completionRef.current = run.status === 'completed';
+  }, [run.id]);
 
-    // Simulate call progression
-    const timeout = setTimeout(() => {
-      const updatedCalls = calls.map((call, index) => {
-        if (call.state === 'idle') {
-          return { ...call, state: 'dialing' as CallState, startedAt: Date.now() };
+  const syncRun = useCallback(
+    (nextCalls: Call[]) => {
+      const status = nextCalls.every(isTerminal) ? 'completed' : 'calling';
+      const updatedRun: VADRRun = { ...runRef.current, calls: nextCalls, status };
+      onRunUpdate?.(updatedRun);
+
+      if (status === 'completed' && !completionRef.current) {
+        completionRef.current = true;
+        onComplete?.(nextCalls);
+      }
+    },
+    [onComplete, onRunUpdate]
+  );
+
+  const setCallsAndNotify = useCallback(
+    (updater: (previous: Call[]) => Call[]) => {
+      setCalls(prev => {
+        const next = updater(prev);
+        if (next === prev) {
+          return prev;
         }
-        return call;
+        syncRun(next);
+        return next;
       });
-      setCalls(updatedCalls);
-      onRunUpdate({ ...run, calls: updatedCalls, status: 'calling' });
-    }, 1000);
+    },
+    [syncRun]
+  );
 
-    return () => clearTimeout(timeout);
-  }, []);
+  const updateCallState = useCallback(
+    (callId: string, newState: CallState, extra: Partial<Call> = {}) => {
+      setCallsAndNotify(prev =>
+        prev.map(call => {
+          if (call.id !== callId) return call;
 
-  useEffect(() => {
-    // Simulate state transitions
-    const intervals: NodeJS.Timeout[] = [];
-
-    calls.forEach((call, index) => {
-      if (call.state === 'dialing') {
-        const interval = setTimeout(() => {
-          updateCallState(call.id, 'ringing');
-        }, 1500 + index * 300);
-        intervals.push(interval);
-      } else if (call.state === 'ringing') {
-        const interval = setTimeout(() => {
-          // 80% connect, 20% voicemail
-          const nextState = Math.random() > 0.2 ? 'connected' : 'voicemail';
-          updateCallState(call.id, nextState);
-
-          if (nextState === 'connected') {
-            startTranscriptSimulation(call.id);
+          const timingUpdates: Partial<Call> = {};
+          if (newState === 'connected' && !call.startedAt) {
+            timingUpdates.startedAt = Date.now();
           }
-        }, 2000 + index * 400);
-        intervals.push(interval);
-      }
-    });
+          if (TERMINAL_STATES.includes(newState)) {
+            timingUpdates.endedAt = Date.now();
+          }
 
-    return () => intervals.forEach(clearTimeout);
-  }, [calls]);
-
-  const updateCallState = (callId: string, newState: CallState) => {
-    setCalls(prev => prev.map(call =>
-      call.id === callId ? { ...call, state: newState } : call
-    ));
-  };
-
-  const updateCall = (callId: string, updates: Partial<Call>) => {
-    setCalls(prev => prev.map(call =>
-      call.id === callId ? { ...call, ...updates } : call
-    ));
-  };
-
-  const startTranscriptSimulation = (callId: string) => {
-    const call = calls.find(c => c.id === callId);
-    if (!call) return;
-
-    const transcriptSet = getRandomTranscriptSet();
-    const baseTime = Date.now();
-    let turnIndex = 0;
-    let conversationIndex = 0;
-
-    const addNextTurn = () => {
-      if (conversationIndex >= transcriptSet[0].texts.length) {
-        // End call
-        setTimeout(() => {
-          updateCallState(callId, 'completed');
-        }, 1000);
-        return;
-      }
-
-      // Add human response
-      const humanTurn = generateTranscriptTurn(
-        callId,
-        turnIndex++,
-        'human',
-        transcriptSet[0].texts[conversationIndex],
-        baseTime
+          return { ...call, ...extra, ...timingUpdates, state: newState };
+        })
       );
+    },
+    [setCallsAndNotify]
+  );
 
-      updateCall(callId, {
-        transcript: [...(calls.find(c => c.id === callId)?.transcript || []), humanTurn],
-        duration: Math.floor((Date.now() - baseTime) / 1000)
-      });
+  const startTranscriptSimulation = useCallback(
+    (callId: string) => {
+      const transcriptSet = getRandomTranscriptSet();
+      const baseTime = Date.now();
+      let turnIndex = 0;
+      let conversationIndex = 0;
 
-      // Add AI response after delay
-      setTimeout(() => {
-        const aiTurn = generateTranscriptTurn(
+      const addNextTurn = () => {
+        if (conversationIndex >= transcriptSet[0].texts.length) {
+          setTimeout(() => updateCallState(callId, 'completed'), 800);
+          return;
+        }
+
+        const humanTurn = generateTranscriptTurn(
           callId,
           turnIndex++,
-          'ai',
-          transcriptSet[1].texts[conversationIndex],
+          'human',
+          transcriptSet[0].texts[conversationIndex],
           baseTime
         );
 
-        updateCall(callId, {
-          transcript: [...(calls.find(c => c.id === callId)?.transcript || []), aiTurn],
-          duration: Math.floor((Date.now() - baseTime) / 1000),
-          sentiment: conversationIndex >= 2 ? 'positive' : 'neutral'
-        });
+        setCallsAndNotify(prev =>
+          prev.map(call =>
+            call.id === callId
+              ? {
+                  ...call,
+                  transcript: [...call.transcript, humanTurn],
+                  duration: Math.floor((Date.now() - baseTime) / 1000)
+                }
+              : call
+          )
+        );
 
-        conversationIndex++;
+        setTimeout(() => {
+          const aiTurn = generateTranscriptTurn(
+            callId,
+            turnIndex++,
+            'ai',
+            transcriptSet[1].texts[conversationIndex],
+            baseTime
+          );
 
-        // Schedule next turn
-        if (conversationIndex < transcriptSet[0].texts.length) {
-          setTimeout(addNextTurn, 2000 + Math.random() * 1000);
-        } else {
-          setTimeout(() => updateCallState(callId, 'completed'), 2000);
-        }
-      }, 1500 + Math.random() * 1000);
-    };
+          setCallsAndNotify(prev =>
+            prev.map(call =>
+              call.id === callId
+                ? {
+                    ...call,
+                    transcript: [...call.transcript, aiTurn],
+                    duration: Math.floor((Date.now() - baseTime) / 1000),
+                    sentiment: conversationIndex >= 2 ? 'positive' : 'neutral'
+                  }
+                : call
+            )
+          );
 
-    // Start first turn
-    setTimeout(addNextTurn, 800);
-  };
+          conversationIndex++;
+          if (conversationIndex < transcriptSet[0].texts.length) {
+            setTimeout(addNextTurn, 2000 + Math.random() * 1000);
+          } else {
+            setTimeout(() => updateCallState(callId, 'completed'), 1500);
+          }
+        }, 1400 + Math.random() * 800);
+      };
+
+      setTimeout(addNextTurn, 600);
+    },
+    [setCallsAndNotify, updateCallState]
+  );
+
+  useEffect(() => {
+    if (run.status === 'completed') {
+      return;
+    }
+
+    const kickoff = setTimeout(() => {
+      setCallsAndNotify(prev =>
+        prev.map(call =>
+          call.state === 'idle'
+            ? { ...call, state: 'dialing', startedAt: Date.now() }
+            : call
+        )
+      );
+    }, 500);
+
+    return () => clearTimeout(kickoff);
+  }, [run.id, run.status, setCallsAndNotify]);
+
+  useEffect(() => {
+    if (run.status === 'completed') {
+      return;
+    }
+
+    const timers: NodeJS.Timeout[] = [];
+
+    calls.forEach((call, index) => {
+      if (call.state === 'dialing') {
+        const timer = setTimeout(() => {
+          updateCallState(call.id, 'ringing');
+        }, 1300 + index * 250);
+        timers.push(timer);
+      } else if (call.state === 'ringing') {
+        const timer = setTimeout(() => {
+          const connects = Math.random() > 0.2;
+          if (connects) {
+            updateCallState(call.id, 'connected');
+            startTranscriptSimulation(call.id);
+          } else {
+            updateCallState(call.id, 'voicemail');
+          }
+        }, 1800 + index * 350);
+        timers.push(timer);
+      }
+    });
+
+    return () => timers.forEach(clearTimeout);
+  }, [calls, run.status, startTranscriptSimulation, updateCallState]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {calls.map((call) => (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 auto-rows-[1fr]">
+      {calls.map(call => (
         <CallTile
           key={call.id}
           call={call}
-          onUpdate={(updates) => updateCall(call.id, updates)}
+          onUpdate={updates =>
+            setCallsAndNotify(prev =>
+              prev.map(existing =>
+                existing.id === call.id ? { ...existing, ...updates } : existing
+              )
+            )
+          }
+          compact
         />
       ))}
     </div>
