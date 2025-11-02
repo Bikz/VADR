@@ -81,7 +81,6 @@ class CallService {
             statusCallback,
             statusCallbackMethod: 'POST',
             statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-            machineDetection: 'DetectMessageEnd',
             record: false,
           });
 
