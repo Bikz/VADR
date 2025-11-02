@@ -67,3 +67,5 @@ export async function POST(request: NextRequest) {
     return new Response('Server error', { status: 500 });
   }
 }
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
