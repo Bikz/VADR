@@ -50,6 +50,9 @@ bun install
 # Run development server
 bun run dev
 
+# Pre-deploy sanity check (typecheck + lint + production build)
+bun run verify
+
 # Build for production
 bun run build
 ```
@@ -104,6 +107,11 @@ Visit `http://localhost:3000` and try an example query!
 3. From the dashboard, run a query, keep the default leads selected, and click “Go”.
 4. When you answer the call, speak a few short phrases. Watch the transcript panel update per turn.
 5. Confirm the agent replies using Twilio TTS and the tile state transitions to `completed` when you hang up.
+
+### Pre-deploy checks
+
+- `bun run verify` runs type-checking, lint, and a production build locally so you can catch the same errors Vercel will surface before pushing.
+- If you only need the quick validations, `bun run lint` mirrors the checks Next.js performs during `next build`.
 
 ### Remaining TODOs / Next steps
 

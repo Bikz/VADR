@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "bunx tsc --noEmit && next lint",
+    "verify": "bun run lint && bun run build",
     "format": "bunx biome format --write"
   },
   "dependencies": {

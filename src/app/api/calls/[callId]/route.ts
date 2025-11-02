@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callService } from '@/server/services/call-service';
 
+type RouteContext = {
+  params: Promise<{ callId: string }>;
+};
+
 interface UpdateCallRequest {
   isListening?: boolean;
   isTakenOver?: boolean;
   endCall?: boolean;
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { callId: string } }) {
-  const { callId } = params;
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const { callId } = await context.params;
   const payload = (await request.json()) as UpdateCallRequest;
   const callSession = callService.getCall(callId);
 
