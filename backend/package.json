@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && tsc-alias",
+    "build": "bun run --cwd ../packages/shared build && tsc && tsc-alias",
     "start": "bun run dist/index.js",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate"
@@ -19,7 +19,9 @@
     "fastify": "^5.2.0",
     "metorial": "^1.0.3",
     "openai": "^4.73.1",
-    "twilio": "^5.2.1"
+    "twilio": "^5.2.1",
+    "@vadr/shared": "workspace:*",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.17.50",

@@ -1,64 +1,100 @@
-/**
- * API Client for backend communication
- *
- * Uses NEXT_PUBLIC_BACKEND_URL environment variable to determine backend location.
- * Falls back to localhost:3001 for local development.
- */
+import { z } from 'zod';
+import {
+  callActionSchema,
+  CallActionRequest,
+  callEventSchema,
+  leadSchema,
+  Lead,
+  startCallsRequestSchema,
+  startCallsResponseSchema,
+  StartCallsRequest,
+  StartCallsResponse,
+  CallEvent,
+} from '@vadr/shared';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const errorMessage = payload?.error ?? `HTTP ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return payload as T;
+}
+
+async function getJson<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const url = new URL(`${BACKEND_URL}${path}`);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.append(key, value);
+    }
+  }
+  const response = await fetch(url.toString());
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const errorMessage = payload?.error ?? `HTTP ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return payload as T;
+}
+
+export type SearchLeadsParams = {
+  query: string;
+  lat: number;
+  lng: number;
+};
+
 export const apiClient = {
-  /**
-   * Get the backend base URL
-   */
   getBaseUrl(): string {
     return BACKEND_URL;
   },
 
-  /**
-   * Make a POST request to the backend
-   */
-  async post<T = any>(path: string, data: any): Promise<T> {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
+  async searchLeads(params: SearchLeadsParams): Promise<Lead[]> {
+    const { query, lat, lng } = params;
+
+    const raw = await getJson<unknown>('/api/search', {
+      q: query,
+      lat: lat.toString(),
+      lng: lng.toString(),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-
-    return response.json();
+    const parsed = z.array(leadSchema).parse(raw);
+    return parsed;
   },
 
-  /**
-   * Make a GET request to the backend
-   */
-  async get<T = any>(path: string, params?: Record<string, string>): Promise<T> {
-    const url = new URL(`${BACKEND_URL}${path}`);
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
-      });
-    }
+  async startCallRun(payload: StartCallsRequest): Promise<StartCallsResponse> {
+    const validated = startCallsRequestSchema.parse(payload);
+    const raw = await request<unknown>('/api/start-calls', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    });
 
-    const response = await fetch(url.toString());
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-
-    return response.json();
+    return startCallsResponseSchema.parse(raw);
   },
 
-  /**
-   * Create an EventSource for SSE streaming
-   */
+  async updateCall(callId: string, action: CallActionRequest): Promise<void> {
+    const validated = callActionSchema.parse(action);
+    await request(`/api/calls/${encodeURIComponent(callId)}`, {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    });
+  },
+
   createEventSource(path: string, params?: Record<string, string>): EventSource {
     const url = new URL(`${BACKEND_URL}${path}`);
     if (params) {
@@ -68,5 +104,12 @@ export const apiClient = {
     }
 
     return new EventSource(url.toString());
+  },
+
+  parseEvent(data: string): CallEvent | null {
+    if (!data) return null;
+    const parsed = callEventSchema.safeParse(JSON.parse(data));
+    if (!parsed.success) return null;
+    return parsed.data;
   },
 };

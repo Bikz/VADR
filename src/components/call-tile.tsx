@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Call } from '@/types';
-import { getStateColor, getSentimentColor } from '@/lib/mock-data';
+import { getStateColor, getSentimentColor } from '@/lib/call-style';
 import { Waveform } from './waveform';
 
 interface CallTileProps {

@@ -11,8 +11,6 @@ interface CallGridProps {
   onComplete?: (calls: Call[]) => void;
 }
 
-type EventPayload = { type: 'snapshot'; run: VADRRun };
-
 export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
   const [runState, setRunState] = useState<VADRRun>(run);
   const [callsById, setCallsById] = useState<Record<string, Call>>(
@@ -32,27 +30,23 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     const source = apiClient.createEventSource('/api/events', { runId: run.id });
 
     source.onmessage = (message) => {
-      if (!message.data) return;
-      try {
-        const payload = JSON.parse(message.data) as EventPayload;
-        if (payload.type === 'snapshot') {
-          setRunState(payload.run);
-          onRunUpdate?.(payload.run);
+      const payload = apiClient.parseEvent(message.data);
+      if (!payload) return;
+      if (payload.type === 'snapshot') {
+        setRunState(payload.run);
+        onRunUpdate?.(payload.run);
 
-          setCallsById(
-            Object.fromEntries(payload.run.calls.map((call) => [call.id, call]))
-          );
-          orderRef.current = payload.run.calls.map((call) => call.id);
+        setCallsById(
+          Object.fromEntries(payload.run.calls.map((call) => [call.id, call]))
+        );
+        orderRef.current = payload.run.calls.map((call) => call.id);
 
-          if (payload.run.status === 'completed' && !completionRef.current) {
-            completionRef.current = true;
-            onComplete?.(payload.run.calls);
-          } else if (payload.run.status !== 'completed') {
-            completionRef.current = false;
-          }
+        if (payload.run.status === 'completed' && !completionRef.current) {
+          completionRef.current = true;
+          onComplete?.(payload.run.calls);
+        } else if (payload.run.status !== 'completed') {
+          completionRef.current = false;
         }
-      } catch (error) {
-        console.error('Failed to parse event payload', error);
       }
     };
 
@@ -86,7 +80,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call, nextState: boolean) => {
       optimisticUpdate(call.id, { isListening: nextState });
       try {
-        await apiClient.post(`/api/calls/${call.id}`, {
+        await apiClient.updateCall(call.id, {
           action: 'listen',
           value: nextState,
         });
@@ -101,7 +95,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call, nextState: boolean) => {
       optimisticUpdate(call.id, { isTakenOver: nextState });
       try {
-        await apiClient.post(`/api/calls/${call.id}`, {
+        await apiClient.updateCall(call.id, {
           action: 'takeover',
           value: nextState,
         });
@@ -116,7 +110,7 @@ export function CallGrid({ run, onRunUpdate, onComplete }: CallGridProps) {
     async (call: Call) => {
       optimisticUpdate(call.id, { state: 'completed' });
       try {
-        await apiClient.post(`/api/calls/${call.id}`, {
+        await apiClient.updateCall(call.id, {
           action: 'end',
         });
       } catch (error) {

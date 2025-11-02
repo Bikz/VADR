@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
 import type { Call, Lead, VADRRun } from '@/types';
 import { apiClient } from '@/lib/api-client';
-import { mockCallPrep } from '@/lib/mock-data';
+import { buildCallPrep } from '@/lib/call-prep';
 
 const EXAMPLE_QUERIES = [
   'hair salons with same-day appointments',
@@ -23,24 +23,6 @@ interface RunSummary {
   highlights: string[];
   recommendation: string;
   nextSteps: string[];
-}
-
-function getManualTestLead(): Lead | null {
-  const overridePhone = process.env.NEXT_PUBLIC_TEST_PHONE;
-  if (!overridePhone) return null;
-
-  const overrideName = process.env.NEXT_PUBLIC_TEST_NAME ?? 'Test Call Target';
-
-  return {
-    id: 'test-lead',
-    name: overrideName,
-    phone: overridePhone,
-    source: 'Manual',
-    confidence: 1,
-    rating: 5,
-    reviewCount: 1,
-    description: 'Manually configured test recipient',
-  } satisfies Lead;
 }
 
 function generateRunSummary(query: string, calls: Call[]): RunSummary {
@@ -192,24 +174,11 @@ export default function Home() {
     setQuery(searchQuery);
 
     try {
-      const results = await apiClient.get('/api/search', {
-        q: searchQuery.trim(),
-        lat: userLocation.lat.toString(),
-        lng: userLocation.lng.toString(),
+      const leads = await apiClient.searchLeads({
+        query: searchQuery.trim(),
+        lat: userLocation.lat,
+        lng: userLocation.lng,
       });
-      
-      const leads: Lead[] = results.map((result: any, index: number) => ({
-        id: `lead-${Date.now()}-${index}`,
-        name: result.name,
-        phone: result.phone,
-        source: result.source ?? 'Search',
-        url: result.url ?? undefined,
-        confidence: 0.9,
-        rating: result.rating != null ? Number(result.rating.toFixed(1)) : 0,
-        reviewCount: 0,
-        description: result.description ?? 'No description available',
-        distance: result.distance ?? null,
-      }));
 
       if (leads.length === 0) {
         setSearchError('No businesses found. Try a different search query.');
@@ -255,25 +224,16 @@ export default function Home() {
     setLaunchError(null);
 
     try {
-      const response = await apiClient.post<{ runId: string; run: VADRRun }>('/api/start-calls', {
+      const response = await apiClient.startCallRun({
         query,
         leads: selectedLeads,
-        prep: mockCallPrep,
+        prep: buildCallPrep(query, selectedLeads),
         createdBy: 'demo-user',
       });
 
-      const run = response.run ?? {
-        id: response.runId,
-        query,
-        createdBy: 'demo-user',
-        startedAt: Date.now(),
-        status: 'calling' as const,
-        calls: [],
-      };
-
       const normalizedRun: VADRRun = {
-        ...run,
-        id: run.id ?? response.runId ?? `run-${Date.now()}`,
+        ...response.run,
+        id: response.run.id ?? response.runId,
       };
 
       setCurrentRun(normalizedRun);
@@ -459,8 +419,8 @@ export default function Home() {
                   </td>
                   <td className="px-5 py-4 align-top">
                     <div className="font-semibold text-gray-900">{lead.name}</div>
-                    {(lead as any).distance != null && (
-                      <p className="text-xs text-gray-500">{(lead as any).distance} mi away</p>
+                    {lead.distance != null && (
+                      <p className="text-xs text-gray-500">{lead.distance} mi away</p>
                     )}
                   </td>
                   <td className="px-5 py-4 align-top">

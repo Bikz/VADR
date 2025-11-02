@@ -144,11 +144,11 @@ Get your Metorial API key from: https://metorial.com/
 
 ## 🧩 Architecture (MVP)
 
-### Current Implementation (Demo)
-- Mock data generation for realistic simulation
-- Simulated call state transitions
-- Live transcript streaming simulation
-- WebSocket-ready architecture
+### Current Implementation
+- Fastify backend powers lead search, outbound calling, and Twilio webhooks
+- Next.js frontend consumes real run data over SSE for live call updates
+- Shared Zod contracts validate every request/response between apps
+- UI renders actual transcripts, states, and summary analytics from the backend sessions
 
 ### Production Architecture
 ```

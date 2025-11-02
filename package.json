@@ -2,9 +2,14 @@
   "name": "nextjs-shadcn",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "backend",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev -H 0.0.0.0 --turbopack",
-    "build": "next build",
+    "build:shared": "bun run --cwd packages/shared build",
+    "build": "bun run build:shared && next build",
     "start": "next start",
     "lint": "bunx tsc --noEmit && next lint",
     "verify": "NEXT_DISABLE_FONT_DOWNLOADS=1 bun run lint && NEXT_DISABLE_FONT_DOWNLOADS=1 bun run build",
@@ -23,7 +28,8 @@
     "tailwind-merge": "^3.3.0",
     "tailwindcss-animate": "^1.0.7",
     "@vercel/analytics": "^1.3.1",
-    "@sentry/nextjs": "^8.19.0"
+    "@sentry/nextjs": "^8.19.0",
+    "@vadr/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

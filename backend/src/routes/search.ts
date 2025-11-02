@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { Metorial } from 'metorial';
+import { leadSchema, type Lead } from '../types/index.js';
 
 const metorial = new Metorial({
   apiKey: process.env.METORIAL_API_KEY || '',
@@ -7,14 +8,15 @@ const metorial = new Metorial({
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'AIzaSyA6ndDKx6PlVu2MMBFIX1IuG5r5ccdFlhY';
 
-interface BusinessLead {
-  name: string;
-  phone: string;
-  source: string;
-  url?: string;
-  rating: number;
-  description: string;
-  distance: number | null;
+function normalisePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+function computeConfidence(rating?: number, reviewCount?: number): number {
+  const ratingScore = rating ? rating / 5 : 0.4;
+  const volumeScore = reviewCount ? Math.min(reviewCount, 200) / 200 : 0.2;
+  const confidence = 0.2 + ratingScore * 0.5 + volumeScore * 0.3;
+  return Number(Math.min(1, Math.max(0.1, confidence)).toFixed(2));
 }
 
 /**
@@ -42,7 +44,7 @@ async function searchGooglePlaces(
   lat: number,
   lng: number,
   apiKey: string
-): Promise<BusinessLead[]> {
+): Promise<Lead[]> {
   try {
     // Enhance query with location context for better results
     // Google Places will prioritize results near the locationBias, but including location in query helps
@@ -81,7 +83,7 @@ async function searchGooglePlaces(
     const data = await response.json() as any;
     const places = data.places || [];
 
-    const leads: BusinessLead[] = places
+    const leads: Lead[] = places
       .filter((place: any) => {
         // Only include places with phone numbers and active businesses
         if (!(place.nationalPhoneNumber || place.internationalPhoneNumber) || 
@@ -108,8 +110,8 @@ async function searchGooglePlaces(
       })
       .map((place: any) => {
         const phone = place.nationalPhoneNumber || place.internationalPhoneNumber || '';
-        
-        // Calculate distance
+        const phoneDigits = normalisePhone(phone);
+
         let distance: number | null = null;
         if (place.location?.latitude && place.location?.longitude) {
           distance = calculateDistance(
@@ -119,24 +121,32 @@ async function searchGooglePlaces(
             place.location.longitude
           );
         }
-        
+
+        const rating = place.rating ? Number(place.rating.toFixed(1)) : 0;
+        const reviewCount = typeof place.userRatingCount === 'number' ? place.userRatingCount : 0;
+
         return {
+          id: place.id ?? `google-${phoneDigits}`,
           name: place.displayName.text,
-          phone: phone.replace(/\D/g, ''), // Remove formatting, keep digits only
-          source: 'Search',
+          phone: phoneDigits,
+          source: 'Google Places',
           url: place.websiteUri || undefined,
-          rating: place.rating ? Number(place.rating.toFixed(1)) : 0,
+          address: place.formattedAddress || undefined,
+          confidence: computeConfidence(rating, reviewCount),
+          rating,
+          reviewCount,
           description: place.editorialSummary?.text || place.formattedAddress || 'Business listing',
-          distance: distance ? Number(distance.toFixed(1)) : null,
-        };
+          distance: distance !== null ? Number(distance.toFixed(1)) : null,
+        } satisfies Lead;
       })
-      .sort((a: BusinessLead, b: BusinessLead) => {
-        // Sort by distance (closest first)
-        if (a.distance !== null && b.distance !== null) {
-          return a.distance - b.distance;
+      .sort((a: Lead, b: Lead) => {
+        const aDistance = a.distance ?? Infinity;
+        const bDistance = b.distance ?? Infinity;
+
+        if (Number.isFinite(aDistance) || Number.isFinite(bDistance)) {
+          return aDistance - bDistance;
         }
-        if (a.distance !== null) return -1;
-        if (b.distance !== null) return 1;
+
         return 0;
       });
 
@@ -155,7 +165,7 @@ async function searchWithExaAndEnrich(
   lat: number,
   lng: number,
   googleApiKey: string
-): Promise<BusinessLead[]> {
+): Promise<Lead[]> {
   try {
     // Step 1: Use Exa to find business names from web search
     const exaResponse = await metorial.mcp.withSession(
@@ -239,7 +249,7 @@ async function searchWithExaAndEnrich(
     }
 
     // Step 3: Enrich each business name with Google Places to get phone numbers
-    const leads: BusinessLead[] = [];
+    const leads: Lead[] = [];
     const processedPhones = new Set<string>();
 
     for (const businessName of Array.from(businessNames).slice(0, 10)) {
@@ -310,19 +320,26 @@ async function searchWithExaAndEnrich(
           if (closestPlace) {
             const phone = closestPlace.nationalPhoneNumber || closestPlace.internationalPhoneNumber;
             if (phone) {
-              const phoneDigits = phone.replace(/\D/g, '');
-              
-              // Avoid duplicates
+              const phoneDigits = normalisePhone(phone);
+
               if (!processedPhones.has(phoneDigits)) {
                 processedPhones.add(phoneDigits);
-                
+
+                const rating = closestPlace.rating ? Number(closestPlace.rating.toFixed(1)) : 0;
+                const reviewCount = typeof closestPlace.userRatingCount === 'number' ? closestPlace.userRatingCount : 0;
+
                 leads.push({
+                  id: closestPlace.id ?? `exa-${phoneDigits}`,
                   name: closestPlace.displayName.text,
                   phone: phoneDigits,
-                  source: 'Search',
+                  source: 'Google Places',
                   url: closestPlace.websiteUri || undefined,
-                  rating: closestPlace.rating ? Number(closestPlace.rating.toFixed(1)) : 0,
-                  description: closestPlace.editorialSummary?.text || closestPlace.formattedAddress || 'Business listing',
+                  address: closestPlace.formattedAddress || undefined,
+                  confidence: computeConfidence(rating, reviewCount),
+                  rating,
+                  reviewCount,
+                  description:
+                    closestPlace.editorialSummary?.text || closestPlace.formattedAddress || 'Business listing',
                   distance: minDistance !== Infinity ? Number(minDistance.toFixed(1)) : null,
                 });
               }
@@ -382,8 +399,8 @@ export async function searchRoutes(fastify: FastifyInstance) {
       console.log(`Exa + Google Places found ${exaResults.length} businesses`);
 
       // Combine and deduplicate by phone number, then sort by distance
-      const allLeads = [...directResults, ...exaResults];
-      const seen = new Map<string, BusinessLead>();
+      const allLeads: Lead[] = [...directResults, ...exaResults];
+      const seen = new Map<string, Lead>();
 
       for (const lead of allLeads) {
         const key = lead.phone;
@@ -392,27 +409,28 @@ export async function searchRoutes(fastify: FastifyInstance) {
         } else {
           // If duplicate, keep the one with distance info or closer one
           const existing = seen.get(key)!;
-          if (lead.distance !== null && (existing.distance === null || lead.distance < existing.distance)) {
-            seen.set(key, lead);
-          }
+        const leadDistance = lead.distance ?? Infinity;
+        const existingDistance = existing.distance ?? Infinity;
+
+        if (leadDistance < existingDistance) {
+          seen.set(key, lead);
         }
+      }
       }
 
       // Sort by distance (closest first), then take top 10
       const uniqueLeads = Array.from(seen.values())
-        .sort((a: BusinessLead, b: BusinessLead) => {
-          if (a.distance !== null && b.distance !== null) {
-            return a.distance - b.distance;
-          }
-          if (a.distance !== null) return -1;
-          if (b.distance !== null) return 1;
-          return 0;
+        .sort((a: Lead, b: Lead) => {
+          const aDistance = a.distance ?? Infinity;
+          const bDistance = b.distance ?? Infinity;
+          return aDistance - bDistance;
         })
         .slice(0, 10);
 
       console.log(`Returning ${uniqueLeads.length} unique businesses`);
 
-      return reply.send(uniqueLeads);
+      const parsed = leadSchema.array().parse(uniqueLeads);
+      return reply.send(parsed);
     } catch (error: any) {
       console.error('Search error:', error);
       return reply.code(500).send({

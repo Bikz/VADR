@@ -1,27 +1,20 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { CallPrep, Lead } from '../types/index.js';
+import {
+  callActionSchema,
+  CallActionRequest,
+  startCallsRequestSchema,
+  StartCallsRequest,
+} from '../types/index.js';
 import { callService } from '../server/services/call-service.js';
-
-interface StartCallsRequest {
-  runId?: string;
-  query: string;
-  leads: Lead[];
-  prep: CallPrep;
-  createdBy?: string;
-}
-
-interface CallActionRequest {
-  action: 'listen' | 'takeover' | 'end';
-  value?: boolean;
-}
 
 export async function callRoutes(fastify: FastifyInstance) {
   // POST /api/start-calls - Start a new call run
   fastify.post('/start-calls', async (request: FastifyRequest, reply: FastifyReply) => {
-    const data = request.body as StartCallsRequest;
-
-    if (!data?.query || !Array.isArray(data.leads) || data.leads.length === 0) {
-      return reply.code(400).send({ error: 'Invalid payload' });
+    let data: StartCallsRequest;
+    try {
+      data = startCallsRequestSchema.parse(request.body);
+    } catch (error) {
+      return reply.code(400).send({ error: 'Invalid payload', details: error });
     }
 
     const runId = data.runId ?? `run-${Date.now()}`;
@@ -61,15 +54,15 @@ export async function callRoutes(fastify: FastifyInstance) {
   // POST /api/calls/:callId - Perform action on a call
   fastify.post('/calls/:callId', async (request: FastifyRequest, reply: FastifyReply) => {
     const { callId } = request.params as { callId: string };
-    const { action, value } = request.body as CallActionRequest;
+    let actionRequest: CallActionRequest;
 
-    if (!callId) {
-      return reply.code(400).send({ error: 'Missing call ID' });
+    try {
+      actionRequest = callActionSchema.parse(request.body);
+    } catch (error) {
+      return reply.code(400).send({ error: 'Invalid action payload', details: error });
     }
 
-    if (!action) {
-      return reply.code(400).send({ error: 'Missing action' });
-    }
+    const { action, value } = actionRequest;
 
     try {
       switch (action) {
