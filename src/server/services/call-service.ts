@@ -118,31 +118,77 @@ class CallService {
     }
 
     let replyText = DEFAULT_REPLY;
+    let shouldTerminate = false;
+    let retryCount = 0;
+    const maxRetries = 2;
 
     if (speechResult && speechResult.trim().length > 0) {
       const humanTurn = createTranscriptTurn(callId, 'human', speechResult.trim());
       await this.store.appendTranscript(callId, humanTurn);
 
-      try {
-        const conversation = await this.store.getConversationHistory(callId);
-        console.log('[call-service] received speech', {
+      // Retry logic for agent reply generation
+      while (retryCount <= maxRetries) {
+        try {
+          const conversation = await this.store.getConversationHistory(callId);
+          console.log('[call-service] received speech', {
+            runId,
+            callId,
+            speech: speechResult.trim(),
+            attempt: retryCount + 1,
+          });
+
+          const agentReply = await generateAgentReply({
+            conversation,
+            prep: runSession.prep,
+            lead: callSession.call.lead,
+            lastUtterance: speechResult.trim(),
+          });
+
+          replyText = agentReply.text;
+          shouldTerminate = agentReply.shouldTerminate;
+          break; // Success, exit retry loop
+        } catch (error) {
+          retryCount++;
+          console.error('[call-service] failed to generate agent reply', {
+            runId,
+            callId,
+            error,
+            attempt: retryCount,
+            willRetry: retryCount <= maxRetries,
+          });
+
+          if (retryCount > maxRetries) {
+            // All retries exhausted, use contextual fallback
+            const turnCount = Math.floor(
+              (await this.store.getConversationHistory(callId)).filter((m) => m.role !== 'system').length / 2
+            );
+
+            if (turnCount >= 5) {
+              replyText = "I apologize, I'm having technical difficulties. Let me have someone follow up with you. Thank you for your time!";
+              shouldTerminate = true;
+            } else {
+              replyText = DEFAULT_REPLY;
+            }
+          } else {
+            // Wait before retry (exponential backoff)
+            await new Promise((resolve) => setTimeout(resolve, 500 * retryCount));
+          }
+        }
+      }
+    } else {
+      // No speech received, check if we should terminate due to repeated failures
+      const conversation = await this.store.getConversationHistory(callId);
+      const recentAiTurns = conversation.filter((m) => m.role === 'assistant').slice(-3);
+
+      const repeatedDefaults = recentAiTurns.filter((turn) => turn.content === DEFAULT_REPLY).length;
+
+      if (repeatedDefaults >= 2) {
+        replyText = "I'm having trouble hearing you. Let me have someone call you back. Thank you!";
+        shouldTerminate = true;
+        console.log('[call-service] terminating due to repeated speech failures', {
           runId,
           callId,
-          speech: speechResult.trim(),
         });
-        replyText = await generateAgentReply({
-          conversation,
-          prep: runSession.prep,
-          lead: callSession.call.lead,
-          lastUtterance: speechResult.trim(),
-        });
-      } catch (error) {
-        console.error('[call-service] failed to generate agent reply', {
-          runId,
-          callId,
-          error,
-        });
-        replyText = DEFAULT_REPLY;
       }
     }
 
@@ -153,9 +199,14 @@ class CallService {
       runId,
       callId,
       replyText,
+      shouldTerminate,
     });
 
-    return { replyText };
+    return { replyText, shouldTerminate };
+  }
+
+  async getConversationHistory(callId: string) {
+    return this.store.getConversationHistory(callId);
   }
 
   async handleStatus({ runId, callId, callStatus, answeredBy, callSid, callDuration }: StatusArgs) {

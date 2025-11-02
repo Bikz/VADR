@@ -3,6 +3,8 @@ import type { Call, CallPrep, CallState, Lead, TranscriptTurn, VADRRun } from '@
 import type { CallSession, CallStore, CreateRunParams, RunSession } from './types';
 import { prisma } from '@/lib/db';
 
+const TERMINAL_STATES: CallState[] = ['completed', 'failed', 'voicemail'];
+
 type PrismaRun = Prisma.RunGetPayload<{ include: { calls: { include: { transcript: true } } } }>;
 type PrismaCallWithTranscript = Prisma.CallGetPayload<{ include: { transcript: true } }>;
 
@@ -28,7 +30,7 @@ export class PrismaCallStore implements CallStore {
         createdBy,
         status: 'calling',
         startedAt: new Date(),
-        prep: prep as Prisma.InputJsonValue,
+        prep: prep as unknown as Prisma.InputJsonValue,
         calls: {
           create: leads.map((lead, index) => ({
             id: `call-${lead.id}-${Date.now()}-${index}`,
@@ -50,7 +52,7 @@ export class PrismaCallStore implements CallStore {
       update: {
         query,
         createdBy,
-        prep: prep as Prisma.InputJsonValue,
+        prep: prep as unknown as Prisma.InputJsonValue,
       },
       include: {
         calls: {
@@ -95,15 +97,47 @@ export class PrismaCallStore implements CallStore {
   async updateCallState(callId: string, state: CallState, extra: Partial<Call> = {}): Promise<void> {
     this.ensureClient();
 
-    await this.client.call.update({
-      where: { id: callId },
-      data: {
+    await this.client.$transaction(async (tx) => {
+      const existing = await tx.call.findUnique({
+        where: { id: callId },
+        select: { runId: true, startedAt: true, endedAt: true, state: true },
+      });
+
+      if (!existing) {
+        return;
+      }
+
+      const updateData: Prisma.CallUpdateInput = {
         state,
         sentiment: extra.sentiment,
-        startedAt: extra.startedAt ? new Date(extra.startedAt) : undefined,
-        endedAt: extra.endedAt ? new Date(extra.endedAt) : undefined,
-        durationSeconds: extra.duration ?? undefined,
-      },
+        updatedAt: new Date(),
+      };
+
+      if (typeof extra.startedAt === 'number') {
+        updateData.startedAt = new Date(extra.startedAt);
+      } else if (!existing.startedAt && state === 'connected') {
+        updateData.startedAt = new Date();
+      }
+
+      if (typeof extra.endedAt === 'number') {
+        updateData.endedAt = new Date(extra.endedAt);
+      } else if (TERMINAL_STATES.includes(state) && !existing.endedAt) {
+        updateData.endedAt = new Date();
+      }
+
+      if (typeof extra.duration === 'number') {
+        updateData.durationSeconds = extra.duration;
+      } else if (TERMINAL_STATES.includes(state) && existing.startedAt && !existing.endedAt) {
+        const diffMs = Date.now() - existing.startedAt.getTime();
+        updateData.durationSeconds = Math.max(Math.round(diffMs / 1000), 0);
+      }
+
+      await tx.call.update({
+        where: { id: callId },
+        data: updateData,
+      });
+
+      await this.recalculateRunStatus(tx, existing.runId);
     });
   }
 
@@ -192,7 +226,7 @@ export class PrismaCallStore implements CallStore {
   async getPrepForRun(runId: string): Promise<CallPrep | undefined> {
     this.ensureClient();
     const run = await this.client.run.findUnique({ where: { id: runId } });
-    return (run?.prep as CallPrep) ?? undefined;
+    return (run?.prep as unknown as CallPrep) ?? undefined;
   }
 
   async setListening(callId: string, isListening: boolean): Promise<void> {
@@ -208,6 +242,37 @@ export class PrismaCallStore implements CallStore {
     await this.client.call.update({
       where: { id: callId },
       data: { isTakenOver },
+    });
+  }
+
+  private async recalculateRunStatus(client: PrismaClient | Prisma.TransactionClient, runId: string) {
+    const run = await client.run.findUnique({
+      where: { id: runId },
+      select: { status: true },
+    });
+
+    if (!run) return;
+
+    const calls = await client.call.findMany({
+      where: { runId },
+      select: { state: true },
+    });
+
+    if (calls.length === 0) return;
+
+    const allTerminal = calls.every((call) => TERMINAL_STATES.includes(call.state as CallState));
+    const nextStatus: VADRRun['status'] = allTerminal ? 'completed' : 'calling';
+
+    if (run.status === nextStatus) {
+      return;
+    }
+
+    await client.run.update({
+      where: { id: runId },
+      data: {
+        status: nextStatus,
+        updatedAt: new Date(),
+      },
     });
   }
 
@@ -300,16 +365,5 @@ export class PrismaCallStore implements CallStore {
     return conversation;
   }
 }
-
-type PrismaCallWithTranscript = Awaited<ReturnType<PrismaClient['call']['findUnique']>> & {
-  transcript: Array<{
-    id: string;
-    speaker: string;
-    text: string;
-    timestamp: Date;
-    t0Ms: number | null;
-    t1Ms: number | null;
-  }>;
-};
 
 export const prismaCallStore = prisma ? new PrismaCallStore(prisma) : null;

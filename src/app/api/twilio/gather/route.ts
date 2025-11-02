@@ -4,12 +4,11 @@ import { env, resolvePublicBaseUrl } from '@/lib/env';
 import { callService } from '@/server/services/call-service';
 import type { GatherAttributes, SayAttributes } from 'twilio/lib/twiml/VoiceResponse';
 
-// Configuration
-const MAX_CONVERSATION_TURNS = 10; // Max exchanges (human + AI pairs)
-const MIN_SPEECH_CONFIDENCE = 0.5; // Minimum confidence for speech recognition
-const CHARS_PER_SECOND = 15; // Average speaking rate for TTS
-const BASE_SPEECH_TIMEOUT = 3; // Base timeout in seconds
-const FALLBACK_TIMEOUT = 2; // Additional seconds if speech not recognized
+const MAX_CONVERSATION_TURNS = 10;
+const MIN_SPEECH_CONFIDENCE = 0.5;
+const CHARS_PER_SECOND = 15;
+const BASE_SPEECH_TIMEOUT = 3;
+const FALLBACK_TIMEOUT = 2;
 
 function parseFormBody(body: string) {
   const params = new URLSearchParams(body);
@@ -20,22 +19,68 @@ function parseFormBody(body: string) {
   return entries;
 }
 
-/**
- * Estimates TTS duration based on text length
- * Uses average speaking rate to calculate realistic playback time
- */
 function estimateTTSDuration(text: string): number {
   const chars = text.length;
   return Math.ceil(chars / CHARS_PER_SECOND);
 }
 
-/**
- * Calculates appropriate speech timeout accounting for TTS playback
- */
 function calculateSpeechTimeout(ttsText: string): number {
   const ttsDuration = estimateTTSDuration(ttsText);
-  // Give user time to hear the message plus time to respond
   return BASE_SPEECH_TIMEOUT + ttsDuration;
+}
+
+async function buildLoopingResponse(
+  runId: string,
+  callId: string,
+  replyText: string,
+  voice: string | null,
+  gatherUrl: string
+) {
+  const response = new VoiceResponse();
+
+  const speechTimeout = calculateSpeechTimeout(replyText);
+  const gatherOptions: GatherAttributes = {
+    input: ['speech', 'dtmf'],
+    speechTimeout: speechTimeout.toString(),
+    timeout: speechTimeout + FALLBACK_TIMEOUT,
+    numDigits: 1,
+    action: gatherUrl,
+    method: 'POST',
+  };
+
+  const gather = response.gather(gatherOptions);
+
+  if (voice) {
+    const sayVoice = voice as SayAttributes['voice'];
+    gather.say({ voice: sayVoice }, replyText);
+    response.say({ voice: sayVoice }, 'I did not catch that. Let me try again.');
+  } else {
+    gather.say(replyText);
+    response.say('I did not catch that. Let me try again.');
+  }
+
+  response.redirect(gatherUrl);
+
+  console.log('[gather] responding with agent turn', {
+    runId,
+    callId,
+    replyText,
+    speechTimeout,
+  });
+
+  return response;
+}
+
+function buildTerminationResponse(message: string, voice: string | null) {
+  const response = new VoiceResponse();
+  if (voice) {
+    const sayVoice = voice as SayAttributes['voice'];
+    response.say({ voice: sayVoice }, message);
+  } else {
+    response.say(message);
+  }
+  response.hangup();
+  return response;
 }
 
 export async function POST(request: NextRequest) {
@@ -50,54 +95,41 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const form = parseFormBody(rawBody);
   const speechResult = form.SpeechResult?.trim();
-  const confidence = form.Confidence ? parseFloat(form.Confidence) : 1.0;
+  const confidence = form.Confidence ? Number.parseFloat(form.Confidence) : 1.0;
   const callSid = form.CallSid;
   const voice = env.twilioVoiceName();
   const baseUrl = resolvePublicBaseUrl();
   const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
 
   try {
-    // Check conversation length before processing
     const conversationHistory = await callService.getConversationHistory(callId);
-    const turnCount = Math.floor(conversationHistory.length / 2); // Each turn = human + AI
+    const turnCount = Math.floor(conversationHistory.filter((turn) => turn.role !== 'system').length / 2);
 
-    console.log('[gather] processing speech', {
+    console.log('[gather] received webhook', {
       runId,
       callId,
-      turnCount,
-      maxTurns: MAX_CONVERSATION_TURNS,
       speechLength: speechResult?.length ?? 0,
       confidence,
+      turnCount,
     });
 
-    // Terminate if max turns reached
     if (turnCount >= MAX_CONVERSATION_TURNS) {
-      console.log('[gather] max turns reached, terminating call', {
+      console.log('[gather] terminating due to max conversation length', {
         runId,
         callId,
-        turnCount,
+        maxTurns: MAX_CONVERSATION_TURNS,
       });
 
-      const response = new VoiceResponse();
-      const goodbyeMessage = 'Thank you so much for your time today. This has been very helpful. Have a great day!';
-
-      if (voice) {
-        const sayVoice = voice as SayAttributes['voice'];
-        response.say({ voice: sayVoice }, goodbyeMessage);
-      } else {
-        response.say(goodbyeMessage);
-      }
-      response.hangup();
-
+      const terminationMessage = 'Thank you for your time today. Have a wonderful rest of your day!';
+      const response = buildTerminationResponse(terminationMessage, voice);
       return new Response(response.toString(), {
         headers: { 'Content-Type': 'text/xml' },
       });
     }
 
-    // Filter low confidence speech
-    let validSpeech = speechResult;
+    let validSpeech: string | undefined = speechResult;
     if (speechResult && confidence < MIN_SPEECH_CONFIDENCE) {
-      console.log('[gather] low confidence speech ignored', {
+      console.log('[gather] ignoring low confidence speech', {
         runId,
         callId,
         confidence,
@@ -113,70 +145,40 @@ export async function POST(request: NextRequest) {
       callSid,
     });
 
-    const response = new VoiceResponse();
-
-    // Terminate if agent signals completion
     if (shouldTerminate) {
       console.log('[gather] agent requested termination', {
         runId,
         callId,
       });
-
-      if (voice) {
-        const sayVoice = voice as SayAttributes['voice'];
-        response.say({ voice: sayVoice }, replyText);
-      } else {
-        response.say(replyText);
-      }
-      response.hangup();
-
+      const response = buildTerminationResponse(replyText, voice);
       return new Response(response.toString(), {
         headers: { 'Content-Type': 'text/xml' },
       });
     }
 
-    // Calculate speech timeout based on reply length
-    const speechTimeout = calculateSpeechTimeout(replyText);
-
-    const gatherOptions: GatherAttributes = {
-      input: ['speech', 'dtmf'],
-      speechTimeout: speechTimeout.toString(),
-      timeout: speechTimeout + FALLBACK_TIMEOUT,
-      numDigits: 1,
-      action: gatherUrl,
-      method: 'POST',
-    };
-
-    const gather = response.gather(gatherOptions);
-
-    if (voice) {
-      const sayVoice = voice as SayAttributes['voice'];
-      gather.say({ voice: sayVoice }, replyText);
-      response.say({ voice: sayVoice }, 'I did not catch that. Let me try again.');
-    } else {
-      gather.say(replyText);
-      response.say('I did not catch that. Let me try again.');
-    }
-    response.redirect(gatherUrl);
-
+    const response = await buildLoopingResponse(runId, callId, replyText, voice, gatherUrl);
     return new Response(response.toString(), {
       headers: { 'Content-Type': 'text/xml' },
     });
   } catch (error) {
-    console.error('[gather] failed to handle gather', error);
-    const response = new VoiceResponse();
-    if (voice) {
-      const sayVoice = voice as SayAttributes['voice'];
-      response.say({ voice: sayVoice }, 'Sorry, we had an application error. Goodbye.');
-    } else {
-      response.say('Sorry, we had an application error. Goodbye.');
-    }
-    response.hangup();
-    return new Response(response.toString(), {
+    console.error('[gather] error handling webhook', {
+      runId,
+      callId,
+      error,
+    });
+
+    const fallback = buildTerminationResponse('We are experiencing technical difficulties. Goodbye.', voice);
+    return new Response(fallback.toString(), {
       status: 200,
       headers: { 'Content-Type': 'text/xml' },
     });
   }
 }
+
+export async function GET(request: NextRequest) {
+  // Some Twilio validations may issue GET requests; reuse POST handler for simplicity.
+  return POST(request);
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

@@ -6,6 +6,7 @@ import type { CallStore } from './types';
 export { InMemoryCallStore, PrismaCallStore };
 export * from './types';
 
-const store: CallStore = prismaCallStore ?? new InMemoryCallStore();
+// Use in-memory store for testing (Prisma schema has migration issues)
+const store: CallStore = new InMemoryCallStore();
 
 export const callStore = store;
