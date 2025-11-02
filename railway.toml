@@ -1,5 +1,0 @@
-[service.backend]
-root = "backend"
-install = ["bun install"]
-build = ["bun run build"]
-start = ["bun run start"]
