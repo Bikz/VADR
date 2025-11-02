@@ -43,13 +43,16 @@ User Query → Web Search → Find Phone Numbers → 6 Parallel Calls → Live T
 
 ## 🚀 Quick Start
 
+### Frontend (Next.js)
+
 ```bash
-# Install dependencies
+# Install frontend dependencies
 bun install
 
 # Set up environment variables
 cp .env.example .env.local
-# Edit .env.local and add your Metorial API key:
+# Edit .env.local and add:
+# NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 # METORIAL_API_KEY=your-metorial-api-key-here
 
 # Run development server
@@ -58,24 +61,55 @@ bun run dev
 # Pre-deploy sanity check (typecheck + lint + production build)
 bun run verify
 
-# Generate Prisma client after schema changes
-bun run prisma:generate
-
-# Push schema to PlanetScale/Neon when connected
-bun run prisma:push
-
 # Build for production
 bun run build
 ```
 
-Visit `http://localhost:3000` and try an example query!
+Visit `http://localhost:3000` and try an example query (with the backend running).
+
+### Backend (Fastify + Bun)
+
+```bash
+cd backend
+
+# Install backend dependencies
+bun install
+
+# Provide required env vars (Twilio, OpenAI, Prisma, etc.)
+cp .env.example .env
+# Fill in TWILIO_*, OPENAI_API_KEY, DATABASE_URL, METORIAL_API_KEY, GOOGLE_PLACES_API_KEY
+
+# Start the backend API
+bun run dev
+
+# Optional: run backend smoke tests
+# bun run tsx scripts/test-call-flow.ts
+# bun run node scripts/test-exa-search.js
+```
 
 ### Environment Variables
 
-Create a `.env.local` file in the root directory with:
+Frontend (`.env.local`):
 
 ```env
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 METORIAL_API_KEY=your-metorial-api-key-here
+```
+
+Backend (`backend/.env`):
+
+```env
+PORT=3001
+HOST=0.0.0.0
+DATABASE_URL=postgres://...
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE_NUMBER=...
+OPENAI_API_KEY=...
+VOICE_AGENT_MODEL=gpt-4o-mini
+PUBLIC_BASE_URL=https://your-backend.example.com
+METORIAL_API_KEY=your-metorial-api-key-here
+GOOGLE_PLACES_API_KEY=your-google-places-api-key
 ```
 
 Get your Metorial API key from: https://metorial.com/

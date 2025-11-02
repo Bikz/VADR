@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "build": "tsc && tsc-alias",
+    "start": "bun run dist/index.js",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate"
   },
@@ -24,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^20.17.50",
     "prisma": "^5.20.0",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3"
   }

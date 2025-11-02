@@ -78,7 +78,7 @@ async function searchGooglePlaces(
       return [];
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const places = data.places || [];
 
     const leads: BusinessLead[] = places
@@ -266,7 +266,7 @@ async function searchWithExaAndEnrich(
         });
 
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as any;
           const places = data.places || [];
 
           // Find the closest place to user's location

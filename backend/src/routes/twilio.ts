@@ -224,7 +224,7 @@ export async function twilioRoutes(fastify: FastifyInstance) {
     return fastify.inject({
       method: 'POST',
       url: request.url,
-      payload: request.body,
+      payload: request.body as any,
     });
   });
 

@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
 import type { Call, Lead, VADRRun } from '@/types';
-import { createInitialCall } from '@/lib/mock-data';
 import { apiClient } from '@/lib/api-client';
+import { mockCallPrep } from '@/lib/mock-data';
 
 const EXAMPLE_QUERIES = [
   'hair salons with same-day appointments',
@@ -251,18 +251,39 @@ export default function Home() {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
-    const calls = selectedLeads.map(createInitialCall);
-    const run: VADRRun = {
-      id: `run-${Date.now()}`,
-      query,
-      createdBy: 'demo-user',
-      startedAt: Date.now(),
-      status: 'calling',
-      calls,
-    };
+    setIsLaunching(true);
+    setLaunchError(null);
 
-    setCurrentRun(run);
-    setStage('calling');
+    try {
+      const response = await apiClient.post<{ runId: string; run: VADRRun }>('/api/start-calls', {
+        query,
+        leads: selectedLeads,
+        prep: mockCallPrep,
+        createdBy: 'demo-user',
+      });
+
+      const run = response.run ?? {
+        id: response.runId,
+        query,
+        createdBy: 'demo-user',
+        startedAt: Date.now(),
+        status: 'calling' as const,
+        calls: [],
+      };
+
+      const normalizedRun: VADRRun = {
+        ...run,
+        id: run.id ?? response.runId ?? `run-${Date.now()}`,
+      };
+
+      setCurrentRun(normalizedRun);
+      setStage('calling');
+    } catch (error) {
+      console.error('Failed to launch calls', error);
+      setLaunchError(error instanceof Error ? error.message : 'Failed to launch calls. Please try again.');
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   const handleRunUpdate = (updatedRun: VADRRun) => {
