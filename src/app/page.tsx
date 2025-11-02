@@ -24,6 +24,24 @@ interface RunSummary {
   nextSteps: string[];
 }
 
+function getManualTestLead(): Lead | null {
+  const overridePhone = process.env.NEXT_PUBLIC_TEST_PHONE;
+  if (!overridePhone) return null;
+
+  const overrideName = process.env.NEXT_PUBLIC_TEST_NAME ?? 'Test Call Target';
+
+  return {
+    id: 'test-lead',
+    name: overrideName,
+    phone: overridePhone,
+    source: 'Manual',
+    confidence: 1,
+    rating: 5,
+    reviewCount: 1,
+    description: 'Manually configured test recipient',
+  } satisfies Lead;
+}
+
 function generateRunSummary(query: string, calls: Call[]): RunSummary {
   if (!calls.length) {
     return {
@@ -100,6 +118,16 @@ export default function Home() {
   const handleSearch = () => {
     if (!query.trim()) return;
 
+    const manualLead = getManualTestLead();
+    if (manualLead) {
+      setCandidates([manualLead]);
+      setSelectedLeadIds({ [manualLead.id]: true });
+      setCurrentRun(null);
+      setSummary(null);
+      setStage('review');
+      return;
+    }
+
     const leads = generateMockLeads(6);
     const defaults = leads.reduce<Record<string, boolean>>((acc, lead) => {
       acc[lead.id] = true;
@@ -130,23 +158,8 @@ export default function Home() {
     const selectedLeads = candidates.filter(lead => selectedLeadIds[lead.id]);
     if (!selectedLeads.length) return;
 
-    const overridePhone = process.env.NEXT_PUBLIC_TEST_PHONE;
-    const overrideName = process.env.NEXT_PUBLIC_TEST_NAME ?? 'Test Call Target';
-
-    const leadsForRun: Lead[] = overridePhone
-      ? [
-          {
-            id: 'test-lead',
-            name: overrideName,
-            phone: overridePhone,
-            source: 'Manual',
-            confidence: 1,
-            rating: 5,
-            reviewCount: 1,
-            description: 'Manually configured test recipient',
-          },
-        ]
-      : selectedLeads;
+    const manualLead = getManualTestLead();
+    const leadsForRun: Lead[] = manualLead ? [manualLead] : selectedLeads;
 
     const runId = `run-${Date.now()}`;
 
