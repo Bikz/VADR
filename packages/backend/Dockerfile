@@ -1,5 +1,5 @@
 # 1. Base image
-FROM oven/bun:1.1-debian AS base
+FROM oven/bun:1.2-debian AS base
 WORKDIR /app
 
 # 2. Install dependencies
@@ -29,6 +29,9 @@ RUN bun run --cwd packages/backend build
 # 6. Final runtime image
 FROM base AS final
 WORKDIR /app
+
+# Copy root package.json for workspace resolution
+COPY --from=base /app/package.json ./package.json
 
 # Copy only the necessary node_modules
 COPY --from=base /app/node_modules ./node_modules
