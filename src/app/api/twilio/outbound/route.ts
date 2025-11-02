@@ -13,8 +13,11 @@ async function buildGatherResponse(runId: string, callId: string) {
 
   const response = new VoiceResponse();
   const gatherOptions: GatherAttributes = {
-    input: ['speech'],
-    speechTimeout: 'auto',
+    input: ['speech', 'dtmf'],
+    speechTimeout: '5', // Explicit timeout instead of 'auto'
+    timeout: 8, // Overall timeout for the gather
+    speechModel: 'phone_call', // Optimized for phone conversations
+    enhanced: true, // Use enhanced speech recognition
     action: gatherUrl,
     method: 'POST',
   };
@@ -58,3 +61,4 @@ export async function POST(request: NextRequest) {
 }
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;

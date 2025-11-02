@@ -5,10 +5,10 @@ import { callService } from '@/server/services/call-service';
 import type { GatherAttributes, SayAttributes } from 'twilio/lib/twiml/VoiceResponse';
 
 const MAX_CONVERSATION_TURNS = 10;
-const MIN_SPEECH_CONFIDENCE = 0.5;
+const MIN_SPEECH_CONFIDENCE = 0.3; // Lowered from 0.5 to capture more speech
 const CHARS_PER_SECOND = 15;
-const BASE_SPEECH_TIMEOUT = 3;
-const FALLBACK_TIMEOUT = 2;
+const BASE_SPEECH_TIMEOUT = 5; // Increased from 3 to give user more time to speak
+const FALLBACK_TIMEOUT = 3; // Increased from 2
 
 function parseFormBody(body: string) {
   const params = new URLSearchParams(body);
@@ -44,6 +44,8 @@ async function buildLoopingResponse(
     speechTimeout: speechTimeout.toString(),
     timeout: speechTimeout + FALLBACK_TIMEOUT,
     numDigits: 1,
+    speechModel: 'phone_call', // Optimized for phone conversations
+    enhanced: true, // Use enhanced speech recognition
     action: gatherUrl,
     method: 'POST',
   };
@@ -134,8 +136,22 @@ export async function POST(request: NextRequest) {
         callId,
         confidence,
         threshold: MIN_SPEECH_CONFIDENCE,
+        speechResult,
       });
       validSpeech = undefined;
+    } else if (speechResult) {
+      console.log('[gather] accepted speech', {
+        runId,
+        callId,
+        confidence,
+        speechLength: speechResult.length,
+      });
+    } else {
+      console.log('[gather] no speech detected', {
+        runId,
+        callId,
+        formKeys: Object.keys(form),
+      });
     }
 
     const { replyText, shouldTerminate } = await callService.handleGather({
@@ -182,3 +198,4 @@ export async function GET(request: NextRequest) {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Increase timeout for OpenAI API calls (requires Vercel Pro)
