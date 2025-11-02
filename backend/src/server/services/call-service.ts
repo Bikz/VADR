@@ -31,6 +31,7 @@ interface StatusArgs {
 }
 
 const DEFAULT_REPLY = 'Thanks for sharing. Could you tell me more?';
+const TAKEOVER_HOLD_MESSAGE = 'One moment while I connect you with a teammate.';
 
 class CallService {
   constructor(private readonly store: CallStore) {}
@@ -139,59 +140,64 @@ class CallService {
 
     let replyText = DEFAULT_REPLY;
     let shouldTerminate = false;
+    let allowAgentSpeech = true;
+    let shouldRecordAiTurn = true;
     let retryCount = 0;
     const maxRetries = 2;
+    const isTakenOver = callSession.call.isTakenOver;
 
     if (speechResult && speechResult.trim().length > 0) {
       const humanTurn = createTranscriptTurn(callId, 'human', speechResult.trim());
       await this.store.appendTranscript(callId, humanTurn);
 
-      // Retry logic for agent reply generation
-      while (retryCount <= maxRetries) {
-        try {
-          const conversation = await this.store.getConversationHistory(callId);
-          console.log('[call-service] received speech', {
-            runId,
-            callId,
-            speech: speechResult.trim(),
-            attempt: retryCount + 1,
-          });
+      if (!isTakenOver) {
+        // Retry logic for agent reply generation
+        while (retryCount <= maxRetries) {
+          try {
+            const conversation = await this.store.getConversationHistory(callId);
+            console.log('[call-service] received speech', {
+              runId,
+              callId,
+              speech: speechResult.trim(),
+              attempt: retryCount + 1,
+            });
 
-          const agentReply = await generateAgentReply({
-            conversation,
-            prep: runSession.prep,
-            lead: callSession.call.lead,
-            lastUtterance: speechResult.trim(),
-          });
+            const agentReply = await generateAgentReply({
+              conversation,
+              prep: runSession.prep,
+              lead: callSession.call.lead,
+              lastUtterance: speechResult.trim(),
+            });
 
-          replyText = agentReply.text;
-          shouldTerminate = agentReply.shouldTerminate;
-          break; // Success, exit retry loop
-        } catch (error) {
-          retryCount++;
-          console.error('[call-service] failed to generate agent reply', {
-            runId,
-            callId,
-            error,
-            attempt: retryCount,
-            willRetry: retryCount <= maxRetries,
-          });
+            replyText = agentReply.text;
+            shouldTerminate = agentReply.shouldTerminate;
+            break; // Success, exit retry loop
+          } catch (error) {
+            retryCount++;
+            console.error('[call-service] failed to generate agent reply', {
+              runId,
+              callId,
+              error,
+              attempt: retryCount,
+              willRetry: retryCount <= maxRetries,
+            });
 
-          if (retryCount > maxRetries) {
-            // All retries exhausted, use contextual fallback
-            const turnCount = Math.floor(
-              (await this.store.getConversationHistory(callId)).filter((m) => m.role !== 'system').length / 2
-            );
+            if (retryCount > maxRetries) {
+              // All retries exhausted, use contextual fallback
+              const turnCount = Math.floor(
+                (await this.store.getConversationHistory(callId)).filter((m) => m.role !== 'system').length / 2
+              );
 
-            if (turnCount >= 5) {
-              replyText = "I apologize, I'm having technical difficulties. Let me have someone follow up with you. Thank you for your time!";
-              shouldTerminate = true;
+              if (turnCount >= 5) {
+                replyText = "I apologize, I'm having technical difficulties. Let me have someone follow up with you. Thank you for your time!";
+                shouldTerminate = true;
+              } else {
+                replyText = DEFAULT_REPLY;
+              }
             } else {
-              replyText = DEFAULT_REPLY;
+              // Wait before retry (exponential backoff)
+              await new Promise((resolve) => setTimeout(resolve, 500 * retryCount));
             }
-          } else {
-            // Wait before retry (exponential backoff)
-            await new Promise((resolve) => setTimeout(resolve, 500 * retryCount));
           }
         }
       }
@@ -212,17 +218,41 @@ class CallService {
       }
     }
 
-    const aiTurn = createTranscriptTurn(callId, 'ai', replyText);
-    await this.store.appendTranscript(callId, aiTurn);
+    if (isTakenOver) {
+      const lastAiTurn = [...callSession.call.transcript]
+        .reverse()
+        .find((turn) => turn.speaker === 'ai');
+
+      if (lastAiTurn?.text.trim() === TAKEOVER_HOLD_MESSAGE) {
+        allowAgentSpeech = false;
+        shouldRecordAiTurn = false;
+      }
+
+      replyText = TAKEOVER_HOLD_MESSAGE;
+      shouldTerminate = false;
+
+      if (allowAgentSpeech) {
+        console.log('[call-service] call taken over by teammate, pausing AI agent', {
+          runId,
+          callId,
+        });
+      }
+    }
+
+    if (shouldRecordAiTurn) {
+      const aiTurn = createTranscriptTurn(callId, 'ai', replyText);
+      await this.store.appendTranscript(callId, aiTurn);
+    }
 
     console.log('[call-service] responding with ai turn', {
       runId,
       callId,
       replyText,
       shouldTerminate,
+      allowAgentSpeech,
     });
 
-    return { replyText, shouldTerminate };
+    return { replyText, shouldTerminate, allowAgentSpeech };
   }
 
   async getConversationHistory(callId: string) {
