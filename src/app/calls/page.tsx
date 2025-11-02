@@ -663,26 +663,6 @@ export default function CallsPage() {
     };
   }, [calls]);
 
-  // Navigate to summaries when all calls are completed or failed
-  useEffect(() => {
-    if (calls.length === 0) return;
-
-    const allFinished = calls.every(call => 
-      call.state === 'completed' || call.state === 'failed'
-    );
-
-    if (allFinished) {
-      // Wait a moment before navigating to show the final state
-      const timer = setTimeout(() => {
-        // Pass calls data to summaries page via URL params
-        const callsJson = encodeURIComponent(JSON.stringify(calls));
-        const query = run?.query ? encodeURIComponent(run.query) : '';
-        router.push(`/summaries?calls=${callsJson}&query=${query}`);
-      }, 2000); // 2 second delay to show final state
-
-      return () => clearTimeout(timer);
-    }
-  }, [calls, run, router]);
 
   const handleViewTranscript = (callId: string) => {
     console.log('View transcript for call:', callId);
