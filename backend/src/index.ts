@@ -15,9 +15,42 @@ const fastify = Fastify({
   },
 });
 
+const rawOrigins = process.env.FRONTEND_URLS ?? process.env.FRONTEND_URL ?? 'http://localhost:3000';
+const allowedOrigins = rawOrigins
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const matchesOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true; // Allow server-to-server / same-origin
+  return allowedOrigins.some((allowed) => {
+    if (allowed === '*') return true;
+    if (allowed.startsWith('http')) {
+      return origin === allowed;
+    }
+    if (allowed.startsWith('*.')) {
+      const hostname = new URL(origin).hostname;
+      const suffix = allowed.slice(1); // remove leading *
+      return hostname.endsWith(suffix);
+    }
+    try {
+      const regex = new RegExp(allowed);
+      return regex.test(origin);
+    } catch {
+      return false;
+    }
+  });
+};
+
 // Register CORS
 await fastify.register(cors, {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, cb) => {
+    if (matchesOrigin(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Origin ${origin ?? '<unknown>'} is not allowed by CORS`));
+    }
+  },
   credentials: true,
 });
 
