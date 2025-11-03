@@ -374,6 +374,25 @@ export default function CallsPage() {
     };
   }, [calls]);
 
+  // Redirect to summaries when all calls are complete
+  useEffect(() => {
+    if (calls.length === 0 || !run) return;
+
+    const allCallsComplete = calls.every(call =>
+      call.state === 'completed' || call.state === 'failed' || call.state === 'voicemail'
+    );
+
+    if (allCallsComplete) {
+      // Wait a moment to show the final state before redirecting
+      const timer = setTimeout(() => {
+        const callsParam = encodeURIComponent(JSON.stringify(calls));
+        const queryParam = encodeURIComponent(run.query);
+        router.push(`/summaries?calls=${callsParam}&query=${queryParam}`);
+      }, 2000); // 2 second delay
+
+      return () => clearTimeout(timer);
+    }
+  }, [calls, run, router]);
 
   const handleViewTranscript = (callId: string) => {
     console.log('View transcript for call:', callId);

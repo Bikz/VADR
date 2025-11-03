@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Sparkles, Search, Plus, ArrowUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CallGrid } from '@/components/call-grid';
@@ -102,6 +103,7 @@ function generateRunSummary(query: string, calls: Call[]): RunSummary {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>('search');
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<Lead[]>([]);
@@ -298,17 +300,13 @@ export default function Home() {
         createdBy: 'demo-user',
       });
 
-      const normalizedRun: VADRRun = {
-        ...response.run,
-        id: response.run.id ?? response.runId,
-      };
+      const runId = response.run.id ?? response.runId;
 
-      setCurrentRun(normalizedRun);
-      setStage('calling');
+      // Redirect to the calls page with runId
+      router.push(`/calls?runId=${runId}`);
     } catch (error) {
       console.error('Failed to launch calls', error);
       setLaunchError(error instanceof Error ? error.message : 'Failed to launch calls. Please try again.');
-    } finally {
       setIsLaunching(false);
     }
   };
