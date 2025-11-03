@@ -102,6 +102,7 @@ export const startCallsRequestSchema = z.object({
   leads: z.array(leadSchema),
   prep: callPrepSchema,
   createdBy: z.string().optional(),
+  demoMode: z.boolean().optional(),
 });
 
 export type StartCallsRequest = z.infer<typeof startCallsRequestSchema>;

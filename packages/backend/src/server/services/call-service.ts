@@ -13,6 +13,7 @@ interface StartRunArgs {
   leads: Lead[];
   prep: CallPrep;
   createdBy?: string;
+  demoMode?: boolean;
 }
 
 interface GatherArgs {
@@ -38,7 +39,7 @@ class CallService {
   constructor(private readonly store: CallStore) {}
 
   async startRun(args: StartRunArgs): Promise<{ run: VADRRun; session: RunSession }> {
-    const { runId, query, leads, prep } = args;
+    const { runId, query, leads, prep, demoMode } = args;
     const createdBy = args.createdBy ?? 'vadr-user';
 
     const session = await this.store.createRun({ runId, query, createdBy, prep, leads });
@@ -97,7 +98,7 @@ class CallService {
           await this.store.attachCallSid(call.id, result.sid);
 
           // In demo mode, immediately start simulating the conversation
-          if (env.demoMode()) {
+          if (demoMode || env.demoMode()) {
             console.log('[call-service] DEMO MODE: Starting simulation for call', call.id);
             // Don't await - let it run in background
             simulateCall(call.id, runId, call.lead, prep).catch(err => {

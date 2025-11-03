@@ -119,6 +119,7 @@ export default function Home() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<GeolocationPermissionState | 'unknown'>('unknown');
+  const [demoMode, setDemoMode] = useState(false);
 
   // Reverse geocode coordinates to get city name
   const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<string | null> => {
@@ -298,6 +299,7 @@ export default function Home() {
         leads: selectedLeads,
         prep: buildCallPrep(query, selectedLeads),
         createdBy: 'demo-user',
+        demoMode,
       });
 
       const runId = response.run.id ?? response.runId;
@@ -554,6 +556,17 @@ export default function Home() {
           {selectedCount} of {candidates.length} businesses selected
         </div>
         <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={demoMode}
+              onChange={(e) => setDemoMode(e.target.checked)}
+              className="w-4 h-4 rounded border-[#523429] text-[#523429] focus:ring-[#523429] cursor-pointer"
+            />
+            <span className="font-inter text-sm text-[#513529]/70">
+              Demo mode (simulated conversations)
+            </span>
+          </label>
           <Button
             variant="outline"
             onClick={() => setStage('search')}

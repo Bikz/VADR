@@ -34,6 +34,7 @@ export async function callRoutes(fastify: FastifyInstance) {
         leads: data.leads,
         prep: data.prep,
         createdBy,
+        demoMode: data.demoMode,
       });
 
       return reply.send({
