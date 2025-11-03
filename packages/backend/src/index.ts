@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import formbody from '@fastify/formbody';
 import { twilioRoutes } from './routes/twilio.js';
 import { callRoutes } from './routes/calls.js';
 import { searchRoutes } from './routes/search.js';
@@ -14,13 +15,15 @@ const HOST = process.env.HOST || '0.0.0.0';
 const fastify = Fastify({
   logger: {
     level: 'info', // Use info level in both dev and prod so we can see CORS logs
-    transport: process.env.NODE_ENV === 'production' ? undefined : {
+    // Only enable pretty logging if LOG_PRETTY=1 is explicitly set
+    // Defaults to plain JSON (faster, production-safe, no extra deps needed)
+    transport: process.env.LOG_PRETTY === '1' ? {
       target: 'pino-pretty',
       options: {
         translateTime: 'HH:MM:ss Z',
         ignore: 'pid,hostname',
       },
-    },
+    } : undefined,
   },
 });
 
@@ -132,6 +135,9 @@ fastify.addHook('onRequest', async (request, reply) => {
     }, 'CORS: request received');
   }
 });
+
+// Register form body parser for Twilio webhooks
+await fastify.register(formbody);
 
 await fastify.register(websocket);
 
