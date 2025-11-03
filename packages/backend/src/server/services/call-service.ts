@@ -5,6 +5,7 @@ import { createTranscriptTurn } from '@/lib/transcript';
 import { generateAgentReply } from '@/lib/agent';
 import { callStore, type CallStore, type RunSession } from '@/server/store';
 import { enrichCallData } from '@/lib/call-enrichment';
+import { simulateCall } from './demo-simulator';
 
 interface StartRunArgs {
   runId: string;
@@ -94,12 +95,21 @@ class CallService {
           });
 
           await this.store.attachCallSid(call.id, result.sid);
+
+          // In demo mode, immediately start simulating the conversation
+          if (env.demoMode()) {
+            console.log('[call-service] DEMO MODE: Starting simulation for call', call.id);
+            // Don't await - let it run in background
+            simulateCall(call.id, runId, call.lead, prep).catch(err => {
+              console.error('[call-service] Demo simulation error:', err);
+            });
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          const errorDetails = error && typeof error === 'object' && 'moreInfo' in error 
-            ? (error as any).moreInfo 
+          const errorDetails = error && typeof error === 'object' && 'moreInfo' in error
+            ? (error as any).moreInfo
             : null;
-          
+
           console.error('[call-service] failed to start call', {
             runId,
             callId: call.id,

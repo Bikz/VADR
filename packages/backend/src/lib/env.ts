@@ -25,6 +25,7 @@ export const env = {
   twilioVoiceName: () => readEnv('TWILIO_VOICE_NAME', false) ?? 'Polly.Joanna',
   captainApiKey: () => readEnv('CAPTAIN_API_KEY', false),
   captainOrganizationId: () => readEnv('CAPTAIN_ORGANIZATION_ID', false),
+  demoMode: () => readEnv('DEMO_MODE', false) === 'true',
 };
 
 export function assertEnv() {
