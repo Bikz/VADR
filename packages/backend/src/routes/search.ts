@@ -8,6 +8,155 @@ const metorial = new Metorial({
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
+const QUERY_STOPWORDS = new Set(
+  [
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'about',
+    'available',
+    'be',
+    'best',
+    'can',
+    'cheap',
+    'cheaper',
+    'for',
+    'from',
+    'find',
+    'get',
+    'help',
+    'hour',
+    'hours',
+    'i',
+    'im',
+    'in',
+    'is',
+    'it',
+    'less',
+    'like',
+    'looking',
+    'me',
+    'my',
+    'near',
+    'nearby',
+    'need',
+    'now',
+    'of',
+    'on',
+    'open',
+    'or',
+    'our',
+    'per',
+    'please',
+    'priced',
+    'price',
+    'service',
+    'services',
+    'someone',
+    'taking',
+    'that',
+    'the',
+    'their',
+    'there',
+    'they',
+    'this',
+    'those',
+    'today',
+    'tonight',
+    'to',
+    'under',
+    'want',
+    'walk',
+    'walkin',
+    'walkins',
+    'walk-in',
+    'walk-ins',
+    'ins',
+    'with',
+    'would',
+    'you',
+  ].map((word) => word.toLowerCase())
+);
+
+function simplifyQueryForPlaces(query: string): string {
+  let simplified = query
+    // Remove currency / numeric constraints
+    .replace(/\$\s?\d+(?:\.\d+)?/g, ' ')
+    .replace(/\b(under|less|for|around|about|within)\s+\$?\d+(?:\.\d+)?/gi, ' ')
+    .replace(/\b(for|within)\s+\d+\s*(?:miles?|kms?|minutes?|hours?)\b/gi, ' ')
+    // Remove walk-in / timing qualifiers
+    .replace(/\b(accepting|taking|allowing)\s+walk[-\s]?ins?\b/gi, ' ')
+    .replace(/\b(same[-\s]?day|today|tonight|now|tomorrow|open)\b/gi, ' ')
+    .replace(/\bappointments?\b/gi, ' ')
+    // Remove misc punctuation we do not care about
+    .replace(/["'`]+/g, ' ')
+    .replace(/[,.;:!?]/g, ' ');
+
+  simplified = simplified.replace(/\s+/g, ' ').trim();
+  return simplified || query.trim();
+}
+
+function extractPlaceKeywords(query: string): string[] {
+  const tokens = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => token.replace(/'s$/, ''));
+
+  const keywords: string[] = [];
+  for (const token of tokens) {
+    if (token.length <= 2) {
+      continue;
+    }
+    if (QUERY_STOPWORDS.has(token)) {
+      continue;
+    }
+    const normalised = token.endsWith('s') && token.length > 3 ? token.slice(0, -1) : token;
+    if (!keywords.includes(normalised)) {
+      keywords.push(normalised);
+    }
+  }
+
+  return keywords;
+}
+
+function buildPlacesQueryVariants(query: string): string[] {
+  const variants = new Set<string>();
+  const normalised = query.replace(/\s+/g, ' ').trim();
+  if (normalised) {
+    variants.add(normalised);
+  }
+
+  const simplified = simplifyQueryForPlaces(normalised);
+  if (simplified && simplified !== normalised) {
+    variants.add(simplified);
+  }
+
+  const keywords = extractPlaceKeywords(simplified || normalised);
+  if (keywords.length) {
+    const joined = keywords.join(' ');
+    if (joined) {
+      variants.add(joined);
+    }
+
+    if (keywords.length > 1) {
+      variants.add(keywords.slice(0, 2).join(' '));
+    }
+
+    variants.add(keywords[0]);
+  }
+
+  return Array.from(variants)
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 4); // keep the list short to limit API calls
+}
+
 function normalisePhone(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -390,9 +539,19 @@ export async function searchRoutes(fastify: FastifyInstance) {
 
       console.log(`Searching for "${cleanedQuery}" near ${latitude}, ${longitude}`);
 
-      // Strategy 1: Direct Google Places search (primary)
-      const directResults = await searchGooglePlaces(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
-      console.log(`Direct Google Places found ${directResults.length} businesses`);
+      // Strategy 1: Direct Google Places search (primary) with variants
+      const queryVariants = buildPlacesQueryVariants(cleanedQuery);
+      const directResults: Lead[] = [];
+
+      for (const variant of queryVariants) {
+        const results = await searchGooglePlaces(variant, latitude, longitude, GOOGLE_PLACES_API_KEY);
+        console.log(`Google Places variant "${variant}" returned ${results.length} businesses`);
+        directResults.push(...results);
+
+        if (directResults.length >= 12) {
+          break;
+        }
+      }
 
       // Strategy 2: Use Exa to discover businesses, then enrich with Google Places (backup/enhancement)
       const exaResults = await searchWithExaAndEnrich(cleanedQuery, latitude, longitude, GOOGLE_PLACES_API_KEY);
@@ -409,13 +568,13 @@ export async function searchRoutes(fastify: FastifyInstance) {
         } else {
           // If duplicate, keep the one with distance info or closer one
           const existing = seen.get(key)!;
-        const leadDistance = lead.distance ?? Infinity;
-        const existingDistance = existing.distance ?? Infinity;
+          const leadDistance = lead.distance ?? Infinity;
+          const existingDistance = existing.distance ?? Infinity;
 
-        if (leadDistance < existingDistance) {
-          seen.set(key, lead);
+          if (leadDistance < existingDistance) {
+            seen.set(key, lead);
+          }
         }
-      }
       }
 
       // Sort by distance (closest first), then take top 10
