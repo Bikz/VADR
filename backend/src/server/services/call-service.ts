@@ -41,81 +41,23 @@ class CallService {
     const createdBy = args.createdBy ?? 'vadr-user';
 
     const session = await this.store.createRun({ runId, query, createdBy, prep, leads });
-    const client = getTwilioClient();
-    const fromNumber = env.twilioPhoneNumber();
-    if (!fromNumber) {
-      throw new Error('Twilio caller ID not configured');
-    }
-
-    const baseUrl = resolvePublicBaseUrl();
-
-    console.log('[call-service] creating outbound calls', {
-      runId,
-      fromNumber,
-      baseUrl,
-      calls: session.run.calls.map((call) => ({
-        callId: call.id,
-        leadId: call.leadId,
-        to: call.lead.phone,
-      })),
-    });
-
+    
+    // Demo mode: Skip Twilio entirely, just mark calls as connected for simulation
+    console.log('[call-service] Running in demo mode - simulating calls with OpenAI');
+    
+    // Mark all calls as connected for demo simulation
     await Promise.all(
       session.run.calls.map(async (call) => {
-        // Normalize phone number to E.164 format (ensure it starts with +)
-        let phoneNumber = call.lead.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          // If it doesn't start with +, assume it's a US number and add +1
-          phoneNumber = phoneNumber.replace(/^1/, ''); // Remove leading 1 if present
-          phoneNumber = `+1${phoneNumber}`;
-        }
-
-        try {
-          const answerUrl = `${baseUrl}/api/twilio/outbound?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
-          const statusCallback = `${baseUrl}/api/twilio/status?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
-
-          const result = await client.calls.create({
-            to: phoneNumber,
-            from: fromNumber,
-            url: answerUrl,
-            statusCallback,
-            statusCallbackMethod: 'POST',
-            statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-            record: false,
-          });
-
-          console.log('[call-service] call created', {
-            runId,
-            callId: call.id,
-            originalPhone: call.lead.phone,
-            normalizedPhone: phoneNumber,
-            twilioSid: result.sid,
-            status: result.status,
-          });
-
-          await this.store.attachCallSid(call.id, result.sid);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          const errorDetails = error && typeof error === 'object' && 'moreInfo' in error 
-            ? (error as any).moreInfo 
-            : null;
-          
-          console.error('[call-service] failed to start call', {
-            runId,
-            callId: call.id,
-            originalPhone: call.lead.phone,
-            normalizedPhone: phoneNumber,
-            error: errorMessage,
-            errorDetails,
-            baseUrl,
-            answerUrl: `${baseUrl}/api/twilio/outbound?runId=${runId}&callId=${encodeURIComponent(call.id)}`,
-            twilioError: error,
-          });
-          await this.store.updateCallState(call.id, 'failed');
-        }
+        await this.store.updateCallState(call.id, 'connected');
       })
     );
-
+    
+    // Update session to reflect connected state
+    const updatedRun = await this.store.getRun(runId);
+    if (updatedRun) {
+      return { run: updatedRun.run, session: updatedRun };
+    }
+    
     return { run: session.run, session };
   }
 

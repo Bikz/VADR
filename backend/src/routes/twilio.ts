@@ -172,8 +172,8 @@ async function buildGatherResponse(runId: string, callId: string) {
   const gather = response.gather(gatherOptions);
 
   const openingLine = prep
-    ? `Hello, this is VADR calling about ${prep.objective}. Do you have a moment to chat?`
-    : 'Hello, this is VADR, calling with a quick question. Do you have a moment?';
+    ? `Hello, this is Tara calling about ${prep.objective}. Do you have a moment to chat?`
+    : 'Hello, this is Tara, calling with a quick question. Do you have a moment?';
 
   if (voice) {
     const sayVoice = voice as SayAttributes['voice'];

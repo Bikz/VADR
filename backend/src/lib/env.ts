@@ -25,13 +25,12 @@ export const env = {
   twilioVoiceName: () => readEnv('TWILIO_VOICE_NAME', false) ?? 'Polly.Joanna',
   captainApiKey: () => readEnv('CAPTAIN_API_KEY', false),
   captainOrganizationId: () => readEnv('CAPTAIN_ORGANIZATION_ID', false),
+  elevenLabsApiKey: () => readEnv('ELEVENLABS_API_KEY', false),
 };
 
 export function assertEnv() {
+  // For demo mode, only require OpenAI API key
   const required: Array<[string, () => string | undefined]> = [
-    ['TWILIO_ACCOUNT_SID', env.twilioAccountSid],
-    ['TWILIO_AUTH_TOKEN', env.twilioAuthToken],
-    ['TWILIO_PHONE_NUMBER', env.twilioPhoneNumber],
     ['OPENAI_API_KEY', env.openAiApiKey],
   ];
 

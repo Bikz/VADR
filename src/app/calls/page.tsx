@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Call, VADRRun, CallState } from '@/types';
 import { apiClient } from '@/lib/api-client';
 import { generateTestCalls } from '@/lib/test-data';
+import { DemoVoiceControl } from '@/components/demo-voice-control';
 import dynamic from 'next/dynamic';
 
 const AnimatedCallIcon = dynamic(
@@ -26,9 +27,11 @@ const AnimatedVoicemailIcon = dynamic(
 
 interface CallCardProps {
   call: Call;
+  runId?: string;
   onViewTranscript: (callId: string) => void;
   onCancelCall: (callId: string) => void;
   onMarkComplete: (callId: string) => void;
+  onTakeOver: (callId: string, isTakenOver: boolean) => void;
 }
 
 function getStatusColor(state: CallState): string {
@@ -86,7 +89,7 @@ function formatTimestamp(timestamp: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: CallCardProps) {
+function CallCard({ call, runId, onViewTranscript, onCancelCall, onMarkComplete, onTakeOver }: CallCardProps) {
   const [duration, setDuration] = useState(call.duration ?? 0);
 
   useEffect(() => {
@@ -101,26 +104,20 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
   const events: string[] = [];
 
   if (call.transcript.length > 0) {
-    const sortedTranscript = [...call.transcript].sort((a, b) => b.t0_ms - a.t0_ms);
-    for (let i = 0; i < Math.min(4, sortedTranscript.length); i++) {
-      const turn = sortedTranscript[i];
+    // Show all transcript turns in chronological order (oldest first)
+    const sortedTranscript = [...call.transcript].sort((a, b) => a.t0_ms - b.t0_ms);
+    sortedTranscript.forEach((turn) => {
       const time = formatTimestamp(turn.t0_ms);
       const speaker = turn.speaker === 'ai' ? 'Tara' : call.lead.name.split(' ')[0];
-      events.push(`${time}  ${speaker}: ${turn.text.substring(0, 40)}${turn.text.length > 40 ? '...' : ''}`);
-    }
+      events.push(`${time}  ${speaker}: ${turn.text}`);
+    });
   } else if (call.startedAt) {
     events.push(`00:00  Tara called ${call.lead.name}`);
   }
 
-  const transcriptEventCount = events.length;
-  const maxHeight = 600;
-  const minHeight = 380;
-  const baseHeight = minHeight;
-  const heightPerEvent = 25;
-  const calculatedHeight = Math.min(maxHeight, baseHeight + (transcriptEventCount * heightPerEvent));
-
   const isSmallCard = call.state === 'dialing' || call.state === 'ringing' || call.state === 'idle';
-  const cardHeight = isSmallCard ? 216 : calculatedHeight;
+  // Fixed maximum height for cards - transcript will scroll when content exceeds this
+  const cardHeight = isSmallCard ? 216 : 600; // Fixed height for non-small cards
   const failureReason = call.state === 'failed' ? (call as any).failureReason || 'No answer' : null;
 
   return (
@@ -145,6 +142,28 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
           <span className="font-inter text-[14px] font-medium text-[#513529]/50">
             {formatDuration(duration)}
           </span>
+          {call.state === 'connected' && !call.isTakenOver && (
+            <button
+              onClick={() => onTakeOver(call.id, true)}
+              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#6C5CE7] hover:bg-[#5A4FD9] text-white transition-colors flex items-center justify-center"
+            >
+              <span className="font-inter text-[12px] font-bold text-white tracking-[-0.48px]">
+                Take Over
+              </span>
+            </button>
+          )}
+          {call.isTakenOver && runId && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onTakeOver(call.id, false)}
+                className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              >
+                <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+                  Resume AI
+                </span>
+              </button>
+            </div>
+          )}
           {call.state !== 'connected' && (
             <div className={`px-2 py-1 rounded-[42px] ${getStatusColor(call.state)} flex items-center justify-center min-w-[94px] ${call.state === 'dialing' || call.state === 'ringing' ? 'animate-shake' : ''}`}>
               <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
@@ -168,8 +187,9 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
       </div>
 
       {!isSmallCard && (
-        <div className="h-[calc(100%-85px)] bg-white flex flex-col">
-          <div className="flex-1 px-4 py-4 overflow-y-auto">
+        <div className="h-[calc(100%-85px)] bg-white flex flex-col overflow-hidden">
+          {/* Scrollable transcript section */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
             <div className="space-y-1">
               {events.map((event, index) => (
                 <p key={index} className="font-inter text-[14px] font-normal text-[#513529]/50 leading-[150%]">
@@ -177,84 +197,99 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
                 </p>
               ))}
             </div>
-
-            {(call.extractedData || call.lead.address) && (
-              <>
-                <div className="border-t border-[#523429] my-4" />
-                <div className="space-y-1.5">
-                  {call.extractedData?.price && (
-                    <div className="flex items-start gap-2">
-                      <DollarSign className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
-                        Price: {call.extractedData.price}
-                      </span>
-                    </div>
-                  )}
-                  {call.extractedData?.availability && (
-                    <div className="flex items-start gap-2">
-                      <Clock className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
-                        Availability: {call.extractedData.availability}
-                      </span>
-                    </div>
-                  )}
-                  {call.lead.address && (
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
-                        Address: {call.lead.address}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {call.state === 'failed' && failureReason && (
-              <div className="mt-4 p-3 rounded-lg bg-[#E99E9E]/20 border border-[#E99E9E]">
-                <p className="font-inter text-[12px] font-medium text-[#523429]">
-                  Failure reason: {failureReason}
-                </p>
-              </div>
-            )}
           </div>
 
-          <div className="border-t-2 border-[#523429] h-[1px]" />
+          {/* Fixed extracted data section */}
+          {(call.extractedData || call.lead.address) && (
+            <div className="flex-shrink-0 px-4 pb-2 border-t border-[#523429] pt-4">
+              <div className="space-y-1.5">
+                {call.extractedData?.price && (
+                  <div className="flex items-start gap-2">
+                    <DollarSign className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
+                    <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      Price: {call.extractedData.price}
+                    </span>
+                  </div>
+                )}
+                {call.extractedData?.availability && (
+                  <div className="flex items-start gap-2">
+                    <Clock className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
+                    <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      Availability: {call.extractedData.availability}
+                    </span>
+                  </div>
+                )}
+                {call.extractedData?.notes && (
+                  <div className="flex items-start gap-2">
+                    <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      Notes: {call.extractedData.notes}
+                    </span>
+                  </div>
+                )}
+                {call.lead.address && (
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
+                    <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      Address: {call.lead.address}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-          <div className="px-4 py-4 flex items-center justify-center gap-3">
-            <button
-              onClick={() => onViewTranscript(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
-            >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
-                View Transcript
-              </span>
-            </button>
-            <button
-              onClick={() => onCancelCall(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
-            >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
-                Cancel Call
-              </span>
-            </button>
-            <button
-              onClick={() => onMarkComplete(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
-            >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
-                Mark Complete
-              </span>
-            </button>
-            {(call.state === 'connected' || call.state === 'ringing') && (
-              <button
-                onClick={() => onViewTranscript(call.id)}
-                className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#523429] hover:bg-[#523429]/90 text-white transition-colors flex items-center justify-center"
-              >
-                <span className="font-inter text-[12px] font-bold tracking-[-0.48px]">
-                  Take Over
-                </span>
-              </button>
+          {/* Fixed failure reason section */}
+          {call.state === 'failed' && failureReason && (
+            <div className="flex-shrink-0 mx-4 mb-2 p-3 rounded-lg bg-[#E99E9E]/20 border border-[#E99E9E]">
+              <p className="font-inter text-[12px] font-medium text-[#523429]">
+                Failure reason: {failureReason}
+              </p>
+            </div>
+          )}
+
+          {/* Fixed button section at bottom */}
+          <div className="flex-shrink-0 border-t-2 border-[#523429] h-[1px]" />
+
+          <div className="flex-shrink-0 px-4 py-4 flex items-center justify-center gap-3 flex-wrap">
+            {call.isTakenOver && runId && (
+              <div className="w-full">
+                <DemoVoiceControl
+                  callId={call.id}
+                  runId={runId}
+                  isTakenOver={true}
+                  onStartSpeaking={() => {}}
+                  onStopSpeaking={() => {}}
+                  lastMessage={call.transcript.length > 0 ? call.transcript[call.transcript.length - 1]?.text : undefined}
+                />
+              </div>
+            )}
+            {!call.isTakenOver && (
+              <>
+                <button
+                  onClick={() => onViewTranscript(call.id)}
+                  className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+                >
+                  <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+                    View Transcript
+                  </span>
+                </button>
+                <button
+                  onClick={() => onCancelCall(call.id)}
+                  className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+                >
+                  <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+                    Cancel Call
+                  </span>
+                </button>
+                <button
+                  onClick={() => onMarkComplete(call.id)}
+                  className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+                >
+                  <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+                    Mark Complete
+                  </span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -312,35 +347,125 @@ export default function CallsPage() {
     const businessesParam = params.get('businesses');
     const queryParam = params.get('query');
 
-    // If businesses are provided, create calls from them
+    // If businesses are provided, create calls from them via backend
     if (businessesParam) {
       try {
         const businesses = JSON.parse(decodeURIComponent(businessesParam)) as any[];
         const query = queryParam ? decodeURIComponent(queryParam) : 'Selected businesses';
         
-        // Create calls from the businesses with initial state
-        const callsFromBusinesses: Call[] = businesses.map((business, index) => ({
-          id: `call-${business.id || index}`,
-          leadId: business.id,
-          lead: business,
-          state: 'dialing' as CallState,
-          startedAt: Date.now(),
-          endedAt: undefined,
-          duration: 0,
-          transcript: [],
-          sentiment: 'neutral' as const,
-          isListening: false,
-          isTakenOver: false,
-        }));
+        // Create a demo prep object for the call
+        const demoPrep = {
+          objective: query,
+          script: '1. Greet the business\n2. Ask about availability\n3. Inquire about pricing\n4. Thank them for their time',
+          variables: {
+            research_query: query,
+          },
+          redFlags: ['No phone contact possible'],
+          disallowedTopics: ['Making contractual promises'],
+        };
 
-        setCalls(callsFromBusinesses);
-        setRun({
-          id: `run-from-selection-${Date.now()}`,
-          query: query,
-          calls: callsFromBusinesses,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
+        // Actually start calls via backend API
+        const startCalls = async () => {
+          try {
+            const response = await apiClient.startCallRun({
+              query: query,
+              leads: businesses,
+              prep: demoPrep,
+              createdBy: 'user',
+            });
+
+            const runId = response.runId;
+            setRun({
+              id: runId,
+              query: query,
+              calls: response.run.calls,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              status: 'calling' as const,
+              startedAt: Date.now(),
+              createdBy: 'user',
+            });
+            setCalls(response.run.calls);
+
+            // Connect to EventSource for real-time updates
+            const source = apiClient.createEventSource('/api/events', { runId });
+            source.onmessage = (message) => {
+              const payload = apiClient.parseEvent(message.data);
+              if (!payload) return;
+              if (payload.type === 'snapshot') {
+                // Preserve local takeover state when merging updates
+                setCalls(prevCalls => {
+                  const updatedCalls = payload.run.calls.map((newCall: Call) => {
+                    const existingCall = prevCalls.find(c => c.id === newCall.id);
+                    // Preserve isTakenOver state from local state if it exists
+                    if (existingCall && existingCall.isTakenOver !== undefined) {
+                      return { ...newCall, isTakenOver: existingCall.isTakenOver };
+                    }
+                    return newCall;
+                  });
+                  return updatedCalls;
+                });
+                setRun(payload.run);
+              }
+            };
+            source.onerror = () => {
+              source.close();
+            };
+
+            // Simulate call progression: dialing -> connected after a delay
+            // This is for demo purposes - in real scenario, backend would update via EventSource
+            setTimeout(() => {
+              setCalls(prevCalls => 
+                prevCalls.map(call => ({
+                  ...call,
+                  state: 'connected' as CallState,
+                  startedAt: call.startedAt || Date.now(),
+                }))
+              );
+              // Also update run state
+              setRun(prevRun => {
+                if (!prevRun) return prevRun;
+                return {
+                  ...prevRun,
+                  calls: prevRun.calls.map(call => ({
+                    ...call,
+                    state: 'connected' as CallState,
+                    startedAt: call.startedAt || Date.now(),
+                  })),
+                };
+              });
+            }, 2000); // 2 second delay to show dialing state
+          } catch (error) {
+            console.error('Failed to start calls:', error);
+            // Fallback to local state if API fails
+            const callsFromBusinesses: Call[] = businesses.map((business, index) => ({
+              id: `call-${business.id || index}`,
+              leadId: business.id,
+              lead: business,
+              state: 'dialing' as CallState,
+              startedAt: Date.now(),
+              endedAt: undefined,
+              duration: 0,
+              transcript: [],
+              sentiment: 'neutral' as const,
+              isListening: false,
+              isTakenOver: false,
+            }));
+            setCalls(callsFromBusinesses);
+            setRun({
+              id: `run-from-selection-${Date.now()}`,
+              query: query,
+              calls: callsFromBusinesses,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              status: 'calling' as const,
+              startedAt: Date.now(),
+              createdBy: 'user',
+            });
+          }
+        };
+
+        startCalls();
         return;
       } catch (error) {
         console.error('Failed to parse businesses from URL:', error);
@@ -605,25 +730,96 @@ export default function CallsPage() {
     }
 
     // If runId exists, connect to real data via EventSource
-    const source = apiClient.createEventSource('/api/events', { runId });
+    if (runId) {
+      const source = apiClient.createEventSource('/api/events', { runId });
 
-    source.onmessage = (message) => {
-      const payload = apiClient.parseEvent(message.data);
-      if (!payload) return;
-      if (payload.type === 'snapshot') {
-        setRun(payload.run);
-        setCalls(payload.run.calls);
-      }
-    };
+      source.onmessage = (message) => {
+        const payload = apiClient.parseEvent(message.data);
+        if (!payload) return;
+        if (payload.type === 'snapshot') {
+          // Preserve local takeover state when merging updates
+          setCalls(prevCalls => {
+            const updatedCalls = payload.run.calls.map((newCall: Call) => {
+              const existingCall = prevCalls.find(c => c.id === newCall.id);
+              // Preserve isTakenOver state from local state if it exists
+              if (existingCall && existingCall.isTakenOver !== undefined) {
+                return { ...newCall, isTakenOver: existingCall.isTakenOver };
+              }
+              return newCall;
+            });
+            return updatedCalls;
+          });
+          setRun(payload.run);
+        }
+      };
 
-    source.onerror = () => {
-      source.close();
-    };
+      source.onerror = () => {
+        source.close();
+      };
 
-    return () => {
-      source.close();
-    };
+      return () => {
+        source.close();
+      };
+    }
   }, []);
+
+  // Auto-simulate conversations when calls connect
+  useEffect(() => {
+    if (!run?.id) return;
+
+    const connectedCalls = calls.filter(
+      call => call.state === 'connected' && call.transcript.length === 0
+    );
+
+    if (connectedCalls.length === 0) return;
+
+    // Start simulation for each newly connected call
+    connectedCalls.forEach((call, index) => {
+      setTimeout(async () => {
+        try {
+          // Start with initial Tara message
+          await apiClient.simulateConversation(run.id, call.id, false);
+          
+          // Refresh calls from backend to get updated transcript
+          // This will trigger via EventSource or we can manually refresh
+        } catch (error) {
+          console.error('Failed to start conversation simulation:', error);
+        }
+      }, index * 1500); // Stagger the starts with more delay
+    });
+  }, [calls, run?.id]);
+
+  // Continue auto-simulating conversations that are in progress
+  // Note: This automatically pauses when a call is taken over
+  useEffect(() => {
+    if (!run?.id) return;
+
+    const activeCalls = calls.filter(
+      call => call.state === 'connected' &&
+              call.transcript.length > 0 &&
+              !call.isTakenOver && // Auto-simulation stops when user takes over
+              call.transcript[call.transcript.length - 1]?.speaker === 'ai'
+    );
+
+    if (activeCalls.length === 0) return;
+
+    // Auto-advance conversations with realistic delays (5-7 seconds between turns)
+    const intervalId = setInterval(async () => {
+      for (const call of activeCalls) {
+        try {
+          const lastTurn = call.transcript[call.transcript.length - 1];
+          // Only continue if last turn was from Tara (AI) and conversation isn't too long
+          if (lastTurn?.speaker === 'ai' && call.transcript.length < 12) {
+            await apiClient.simulateConversation(run.id, call.id, true);
+          }
+        } catch (error) {
+          console.error('Failed to continue conversation simulation:', error);
+        }
+      }
+    }, 6000); // Check every 6 seconds for more realistic pacing
+
+    return () => clearInterval(intervalId);
+  }, [calls, run?.id]);
 
   // Auto-mark voicemail calls as completed after they finish
   useEffect(() => {
@@ -732,6 +928,52 @@ export default function CallsPage() {
     }
   };
 
+  const handleTakeOver = async (callId: string, isTakenOver: boolean) => {
+    // Prevent multiple rapid clicks - check if already in desired state
+    const call = calls.find(c => c.id === callId);
+    if (call?.isTakenOver === isTakenOver) {
+      return; // Already in desired state, ignore duplicate clicks
+    }
+
+    // Update local state immediately - only for this specific call
+    setCalls(prevCalls => 
+      prevCalls.map(call => 
+        call.id === callId 
+          ? { ...call, isTakenOver }
+          : call // Keep other calls unchanged
+      )
+    );
+    
+    // Update run state - only for this specific call
+    setRun(prevRun => {
+      if (!prevRun) return prevRun;
+      return {
+        ...prevRun,
+        calls: prevRun.calls.map(call => 
+          call.id === callId 
+            ? { ...call, isTakenOver }
+            : call // Keep other calls unchanged
+        ),
+        updatedAt: Date.now(),
+      };
+    });
+
+    // Call API to persist state
+    try {
+      await apiClient.updateCall(callId, { action: 'takeover', value: isTakenOver });
+    } catch (error) {
+      console.error('Failed to update takeover state via API:', error);
+      // Revert on error to maintain consistency
+      setCalls(prevCalls => 
+        prevCalls.map(call => 
+          call.id === callId 
+            ? { ...call, isTakenOver: !isTakenOver }
+            : call
+        )
+      );
+    }
+  };
+
   if (!run) {
     return (
       <div className="min-h-screen bg-[#FFF5E5] flex items-center justify-center">
@@ -776,9 +1018,11 @@ export default function CallsPage() {
             <CallCard
               key={call.id}
               call={call}
+              runId={run?.id}
               onViewTranscript={handleViewTranscript}
               onCancelCall={handleCancelCall}
               onMarkComplete={handleMarkComplete}
+              onTakeOver={handleTakeOver}
             />
           ))}
         </div>

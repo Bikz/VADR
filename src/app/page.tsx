@@ -366,8 +366,8 @@ export default function Home() {
       if (error instanceof Error) {
         errorMessage = error.message;
         // Provide more helpful error messages
-        if (error.message.includes('Failed to connect') || error.message.includes('fetch')) {
-          errorMessage = 'Cannot connect to backend server. Make sure the backend is running on port 3004 (or check NEXT_PUBLIC_BACKEND_URL).';
+        if (error.message.includes('Failed to connect') || error.message.includes('fetch') || error.message.includes('Cannot connect')) {
+          errorMessage = 'Cannot connect to backend server. Make sure the backend is running on port 3001 (check: http://localhost:3001/health). If using a different port, set NEXT_PUBLIC_BACKEND_URL in .env.local';
         } else if (error.message.includes('Google Places API key')) {
           errorMessage = 'Backend configuration error: Google Places API key is missing or invalid.';
         }

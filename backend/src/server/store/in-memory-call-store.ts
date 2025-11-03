@@ -54,7 +54,7 @@ export class InMemoryCallStore implements CallStore {
         conversation: [
           {
             role: 'system',
-            content: `You are VADR, an AI assistant calling businesses to accomplish the objective: ${prep.objective}. Follow the script flow and stay polite. Avoid disallowed topics: ${prep.disallowedTopics.join(', ')}.`,
+            content: `You are Tara, an AI assistant calling businesses to accomplish the objective: ${prep.objective}. Introduce yourself as "Tara" when greeting. Follow the script flow and stay polite. Avoid disallowed topics: ${prep.disallowedTopics.join(', ')}.`,
           },
         ],
       });

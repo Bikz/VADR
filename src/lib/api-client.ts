@@ -12,17 +12,7 @@ import {
   CallEvent,
 } from '@vadr/shared';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3004';
-
-function toWebsocketUrl(baseUrl: string): string {
-  if (baseUrl.startsWith('https://')) {
-    return baseUrl.replace('https://', 'wss://');
-  }
-  if (baseUrl.startsWith('http://')) {
-    return baseUrl.replace('http://', 'ws://');
-  }
-  return baseUrl;
-}
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
@@ -34,19 +24,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
 
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
-
     if (!response.ok) {
+      const text = await response.text();
+      const payload = text ? JSON.parse(text) : null;
       const errorMessage = payload?.error ?? `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
 
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : null;
     return payload as T;
   } catch (error) {
-    // Provide more context for network errors
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(`Failed to connect to backend at ${BACKEND_URL}${path}. Make sure the backend is running.`);
+      throw new Error(`Cannot connect to backend server at ${BACKEND_URL}. Make sure the backend is running.`);
     }
     throw error;
   }
@@ -60,20 +50,27 @@ async function getJson<T>(path: string, params?: Record<string, string>): Promis
         url.searchParams.append(key, value);
       }
     }
-    const response = await fetch(url.toString());
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
-
+    
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
     if (!response.ok) {
+      const text = await response.text();
+      const payload = text ? JSON.parse(text) : null;
       const errorMessage = payload?.error ?? `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
-
+    
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : null;
     return payload as T;
   } catch (error) {
-    // Provide more context for network errors
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(`Failed to connect to backend at ${BACKEND_URL}${path}. Make sure the backend is running.`);
+      throw new Error(`Cannot connect to backend server at ${BACKEND_URL}. Make sure the backend is running.`);
     }
     throw error;
   }
@@ -132,22 +129,65 @@ export const apiClient = {
     return new EventSource(url.toString());
   },
 
-  createWebSocket(path: string, params?: Record<string, string>): WebSocket {
-    const wsBase = toWebsocketUrl(BACKEND_URL);
-    const url = new URL(`${wsBase}${path}`);
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
-      });
-    }
-
-    return new WebSocket(url.toString());
-  },
-
   parseEvent(data: string): CallEvent | null {
     if (!data) return null;
     const parsed = callEventSchema.safeParse(JSON.parse(data));
     if (!parsed.success) return null;
     return parsed.data;
+  },
+
+  async simulateConversation(runId: string, callId: string, autoSimulate = true): Promise<{
+    vendorResponse?: string;
+    taraResponse?: string;
+    shouldTerminate: boolean;
+  }> {
+    const raw = await request<unknown>('/api/demo/simulate-conversation', {
+      method: 'POST',
+      body: JSON.stringify({ runId, callId, autoSimulate }),
+    });
+
+    return raw as {
+      vendorResponse?: string;
+      taraResponse?: string;
+      shouldTerminate: boolean;
+    };
+  },
+
+  async simulateVendorResponse(
+    runId: string,
+    callId: string,
+    conversation: Array<{ role: 'system' | 'assistant' | 'user'; content: string }>,
+    lastTaraMessage: string,
+    objective: string
+  ): Promise<{ text: string }> {
+    const raw = await request<unknown>('/api/demo/simulate-vendor', {
+      method: 'POST',
+      body: JSON.stringify({
+        runId,
+        callId,
+        conversation,
+        lastTaraMessage,
+        objective,
+      }),
+    });
+
+    return raw as { text: string };
+  },
+
+  async sendUserVendorResponse(
+    runId: string,
+    callId: string,
+    userTranscript: string
+  ): Promise<{ taraResponse: string; shouldTerminate: boolean }> {
+    const raw = await request<unknown>('/api/demo/user-vendor-response', {
+      method: 'POST',
+      body: JSON.stringify({
+        runId,
+        callId,
+        userTranscript,
+      }),
+    });
+
+    return raw as { taraResponse: string; shouldTerminate: boolean };
   },
 };

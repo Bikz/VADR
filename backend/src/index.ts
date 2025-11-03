@@ -7,6 +7,8 @@ import { callRoutes } from './routes/calls.js';
 import { searchRoutes } from './routes/search.js';
 import { eventRoutes } from './routes/events.js';
 import { audioRoutes } from './routes/audio.js';
+import { demoRoutes } from './routes/demo.js';
+import { elevenlabsRoutes } from './routes/elevenlabs.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -168,6 +170,8 @@ await fastify.register(callRoutes, { prefix: '/api' });
 await fastify.register(searchRoutes, { prefix: '/api' });
 await fastify.register(eventRoutes, { prefix: '/api' });
 await fastify.register(audioRoutes, { prefix: '/api' });
+await fastify.register(demoRoutes, { prefix: '/api' });
+await fastify.register(elevenlabsRoutes, { prefix: '/api' });
 
 // Start server
 try {

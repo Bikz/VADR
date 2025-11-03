@@ -6,7 +6,7 @@ let cachedClient: Twilio | null = null;
 
 export function getTwilioClient(): Twilio {
   if (!cachedClient) {
-    assertEnv();
+    // Don't call assertEnv() here - Twilio is optional for demo mode
     const accountSid = env.twilioAccountSid();
     const authToken = env.twilioAuthToken();
 

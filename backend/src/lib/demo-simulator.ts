@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { CallPrep, Lead } from '@/types';
+import type { CallPrep, Lead, TranscriptTurn } from '@/types';
 import { env } from './env';
 
 let cachedClient: OpenAI | null = null;
@@ -12,28 +12,81 @@ function getClient(): OpenAI {
     }
     cachedClient = new OpenAI({ apiKey });
   }
-
   return cachedClient;
 }
 
-interface GenerateAgentReplyArgs {
+interface SimulateVendorResponseArgs {
+  conversation: Array<{ role: 'system' | 'assistant' | 'user'; content: string }>;
+  lead: Lead;
+  lastTaraMessage: string;
+  objective: string;
+}
+
+interface SimulateTaraResponseArgs {
   conversation: Array<{ role: 'system' | 'assistant' | 'user'; content: string }>;
   prep: CallPrep;
   lead: Lead;
-  lastUtterance: string;
+  lastVendorMessage: string;
 }
 
-interface AgentReply {
-  text: string;
-  shouldTerminate: boolean;
+/**
+ * Simulates a vendor's response to Tara's message
+ */
+export async function simulateVendorResponse({
+  conversation,
+  lead,
+  lastTaraMessage,
+  objective,
+}: SimulateVendorResponseArgs): Promise<string> {
+  const client = getClient();
+
+  const vendorPrompt = `You are ${lead.name}, a business owner or employee responding to a call from Tara, an AI assistant doing research.
+
+Business context:
+- Business: ${lead.name}
+- Rating: ${lead.rating} / 5 from ${lead.reviewCount} reviews
+- Description: ${lead.description || 'No description available'}
+- Location: ${lead.address || 'Not specified'}
+
+Research objective: ${objective}
+
+Tara just said: "${lastTaraMessage}"
+
+Respond naturally as the business owner would:
+- Be conversational and friendly
+- Answer questions directly and helpfully
+- Provide realistic business information (availability, pricing, etc.)
+- Show interest but also ask clarifying questions if needed
+- Keep responses under 100 words
+- Sound like a real person on the phone (casual, not overly formal)
+
+Respond in first person as the business owner/employee would:`;
+
+  const messages = [
+    { role: 'system' as const, content: vendorPrompt },
+    ...conversation.filter((entry) => entry.role !== 'system').slice(-10), // Last 10 turns for context
+  ];
+
+  const response = await client.chat.completions.create({
+    model: env.openAiModel(),
+    messages,
+    temperature: 0.7,
+    max_tokens: 150,
+  });
+
+  const text = response.choices[0]?.message?.content?.trim() ?? '';
+  return text || 'Sure, I can help you with that.';
 }
 
-export async function generateAgentReply({
+/**
+ * Simulates Tara's response to a vendor's message (for demo purposes)
+ */
+export async function simulateTaraResponse({
   conversation,
   prep,
   lead,
-  lastUtterance,
-}: GenerateAgentReplyArgs): Promise<AgentReply> {
+  lastVendorMessage,
+}: SimulateTaraResponseArgs): Promise<{ text: string; shouldTerminate: boolean }> {
   const client = getClient();
 
   const scriptSummary = prep.script
@@ -46,7 +99,6 @@ export async function generateAgentReply({
     .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${value}`)
     .join(', ');
 
-  // Calculate conversation length to provide context
   const turnCount = Math.floor(conversation.filter((m) => m.role !== 'system').length / 2);
   const isLongConversation = turnCount >= 7;
 
@@ -56,7 +108,7 @@ export async function generateAgentReply({
     `Red flags to listen for: ${prep.redFlags.join(', ')}. ` +
     `Important context about the lead: rating ${lead.rating} from ${lead.reviewCount} reviews, summary: ${lead.description}. ` +
     `Variables to keep in mind: ${variables}. ` +
-    `You just heard: "${lastUtterance}". ` +
+    `The vendor just said: "${lastVendorMessage}". ` +
     `\n\nIMPORTANT INSTRUCTIONS:\n` +
     `- Introduce yourself as "Tara" (not VADR) when greeting\n` +
     `- Keep responses under 150 characters when possible\n` +
