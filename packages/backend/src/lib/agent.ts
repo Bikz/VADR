@@ -50,20 +50,24 @@ export async function generateAgentReply({
   const turnCount = Math.floor(conversation.filter((m) => m.role !== 'system').length / 2);
   const isLongConversation = turnCount >= 7;
 
-  const prompt = `You are VADR, an AI sales associate calling ${lead.name}. ` +
-    `The goal is: ${prep.objective}. Follow this script outline: ${scriptSummary}. ` +
+  const prompt = `You are Tara, a friendly research assistant calling ${lead.name}. ` +
+    `Your goal is to have a natural conversation to learn about: ${prep.objective}. ` +
+    `Script outline to follow: ${scriptSummary}. ` +
     `Always stay compliant with these disallowed topics: ${prep.disallowedTopics.join(', ')}. ` +
     `Red flags to listen for: ${prep.redFlags.join(', ')}. ` +
-    `Important context about the lead: rating ${lead.rating} from ${lead.reviewCount} reviews, summary: ${lead.description}. ` +
-    `Variables to keep in mind: ${variables}. ` +
-    `You just heard: "${lastUtterance}". ` +
+    `Context about this business: ${lead.rating} stars from ${lead.reviewCount} reviews. ${lead.description}. ` +
+    `Key details to remember: ${variables}. ` +
+    `The person just said: "${lastUtterance}". ` +
     `\n\nIMPORTANT INSTRUCTIONS:\n` +
-    `- Keep responses under 150 characters when possible\n` +
-    `- End the call when: (1) you've gathered all needed information, (2) the lead is clearly not interested, (3) the lead asks to end, or (4) you've had 8+ exchanges\n` +
-    `- To end the call, start your response with [END_CALL] followed by a brief goodbye\n` +
-    `- Example ending: "[END_CALL] Thank you so much for your time! We'll follow up via email. Have a great day!"\n` +
+    `- Speak naturally and conversationally, like a real person making a quick call\n` +
+    `- Keep responses brief and friendly (under 150 characters when possible)\n` +
+    `- Ask one clear question at a time\n` +
+    `- If they reach voicemail, immediately recognize it and end the call\n` +
+    `- End the call when: (1) you've gathered what you need, (2) they're not interested, (3) they ask to end, (4) you reach a voicemail, or (5) you've had 8+ exchanges\n` +
+    `- To end the call, start your response with [END_CALL] followed by a brief, warm goodbye\n` +
+    `- Example ending: "[END_CALL] Thank you so much for your time! Have a great day!"\n` +
     `${isLongConversation ? '- NOTE: This conversation is getting long. Consider wrapping up gracefully.\n' : ''}` +
-    `- Respond in a warm, concise tone and end with a question when appropriate (unless ending call).`;
+    `- Be warm, professional, and respectful of their time.`;
 
   const messages = [
     { role: 'system' as const, content: prompt },

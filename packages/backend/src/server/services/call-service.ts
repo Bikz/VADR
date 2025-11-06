@@ -76,6 +76,8 @@ class CallService {
           const answerUrl = `${baseUrl}/api/twilio/outbound?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
           const statusCallback = `${baseUrl}/api/twilio/status?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
 
+          const recordingStatusCallback = `${baseUrl}/api/twilio/recording-status?runId=${runId}&callId=${encodeURIComponent(call.id)}`;
+
           const result = await client.calls.create({
             to: phoneNumber,
             from: fromNumber,
@@ -83,7 +85,9 @@ class CallService {
             statusCallback,
             statusCallbackMethod: 'POST',
             statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-            record: false,
+            record: true,
+            recordingStatusCallback,
+            recordingStatusCallbackMethod: 'POST',
           });
 
           console.log('[call-service] call created', {

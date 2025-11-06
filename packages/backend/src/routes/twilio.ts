@@ -173,8 +173,8 @@ async function buildGatherResponse(runId: string, callId: string) {
   const gather = response.gather(gatherOptions);
 
   const openingLine = prep
-    ? `Hello, this is VADR calling about ${prep.objective}. Do you have a moment to chat?`
-    : 'Hello, this is VADR, calling with a quick question. Do you have a moment?';
+    ? `Hi, this is Tara calling! I wanted to ask you a quick question about your business. Do you have a moment?`
+    : 'Hi, this is Tara calling with a quick question. Do you have a moment?';
 
   if (voice) {
     const sayVoice = voice as SayAttributes['voice'];
@@ -289,13 +289,21 @@ export async function twilioRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /api/twilio/gather - Twilio validation
-  fastify.get('/gather', async (request, reply) => {
-    return fastify.inject({
-      method: 'POST',
-      url: request.url,
-      payload: request.body as any,
-    });
+  // GET /api/twilio/gather - Twilio validation (redirect to POST)
+  fastify.get('/gather', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { runId, callId } = request.query as { runId?: string; callId?: string };
+
+    if (!runId || !callId) {
+      return reply.code(400).send('Missing identifiers');
+    }
+
+    // For GET requests, return a simple redirect TwiML to the POST endpoint
+    const response = new VoiceResponse();
+    const baseUrl = resolvePublicBaseUrl();
+    const gatherUrl = `${baseUrl}/api/twilio/gather?runId=${encodeURIComponent(runId)}&callId=${encodeURIComponent(callId)}`;
+    response.redirect({ method: 'POST' }, gatherUrl);
+
+    return reply.type('text/xml').send(response.toString());
   });
 
   // GET/POST /api/twilio/outbound - Handle outbound call
@@ -310,11 +318,15 @@ export async function twilioRoutes(fastify: FastifyInstance) {
     return reply.type('text/xml').send(response.toString());
   });
 
-  fastify.post('/outbound', async (request, reply) => {
-    return fastify.inject({
-      method: 'GET',
-      url: request.url,
-    });
+  fastify.post('/outbound', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { runId, callId } = request.query as { runId?: string; callId?: string };
+
+    if (!runId || !callId) {
+      return reply.code(400).send('Missing identifiers');
+    }
+
+    const response = await buildGatherResponse(runId, callId);
+    return reply.type('text/xml').send(response.toString());
   });
 
   fastify.get('/stream', { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
@@ -382,6 +394,40 @@ export async function twilioRoutes(fastify: FastifyInstance) {
 
   // GET for validation
   fastify.get('/status', async (request, reply) => {
+    return reply.code(200).send('OK');
+  });
+
+  // POST /api/twilio/recording-status - Handle recording status callback
+  fastify.post('/recording-status', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { runId, callId } = request.query as { runId?: string; callId?: string };
+
+    if (!runId || !callId) {
+      return reply.code(400).send('Missing identifiers');
+    }
+
+    const form = parseFormBody(request.body);
+    const recordingUrl = form.RecordingUrl;
+    const recordingSid = form.RecordingSid;
+    const recordingStatus = form.RecordingStatus;
+    const recordingDuration = form.RecordingDuration;
+
+    console.log('[recording] received callback', {
+      runId,
+      callId,
+      recordingSid,
+      recordingStatus,
+      recordingDuration,
+      recordingUrl,
+    });
+
+    // Store the recording URL in your database if needed
+    // For now, just log it - you can extend this to save to the call record
+
+    return reply.code(200).send('OK');
+  });
+
+  // GET for validation
+  fastify.get('/recording-status', async (request, reply) => {
     return reply.code(200).send('OK');
   });
 }
