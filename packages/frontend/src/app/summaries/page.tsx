@@ -131,6 +131,52 @@ export default function SummariesPage() {
     };
   }, [calls]);
 
+  const overallSummary = useMemo(() => {
+    if (calls.length === 0) return null;
+
+    const completed = calls.filter(c => c.state === 'completed');
+    const voicemail = calls.filter(c => c.state === 'voicemail');
+    const pickedUp = completed.length;
+    const total = calls.length;
+
+    // Find best call (highest rating + positive sentiment)
+    const bestCall = [...completed].sort((a, b) => {
+      const scoreA = a.lead.rating + (a.sentiment === 'positive' ? 1 : 0);
+      const scoreB = b.lead.rating + (b.sentiment === 'positive' ? 1 : 0);
+      return scoreB - scoreA;
+    })[0];
+
+    // Generate conversational summary
+    const mainSummary = `I made ${total} call${total !== 1 ? 's' : ''} for you. ${pickedUp} business${pickedUp !== 1 ? 'es' : ''} picked up${voicemail.length > 0 ? `, ${voicemail.length} went to voicemail` : ''}.`;
+
+    let findings = '';
+    if (pickedUp > 0) {
+      const pricesFound = completed.filter(c => c.extractedData?.price).length;
+      const availabilityFound = completed.filter(c => c.extractedData?.availability).length;
+
+      if (pricesFound > 0 || availabilityFound > 0) {
+        findings = `From the conversations, I gathered ${pricesFound > 0 ? `pricing information from ${pricesFound} business${pricesFound !== 1 ? 'es' : ''}` : ''}${pricesFound > 0 && availabilityFound > 0 ? ' and ' : ''}${availabilityFound > 0 ? `availability details from ${availabilityFound} location${availabilityFound !== 1 ? 's' : ''}` : ''}.`;
+      }
+    }
+
+    let recommendation = '';
+    if (bestCall) {
+      recommendation = `I'd recommend following up with ${bestCall.lead.name} - they have a ${bestCall.lead.rating.toFixed(1)}/5 rating and the conversation went really well.`;
+      if (bestCall.extractedData?.price) {
+        recommendation += ` They mentioned pricing at ${bestCall.extractedData.price}.`;
+      }
+      if (bestCall.extractedData?.availability) {
+        recommendation += ` Availability: ${bestCall.extractedData.availability}.`;
+      }
+    } else if (voicemail.length > 0) {
+      recommendation = `Since ${voicemail.length} call${voicemail.length !== 1 ? 's' : ''} went to voicemail, I'd suggest trying again later or sending a follow-up message.`;
+    } else {
+      recommendation = `Unfortunately, none of the calls were successful. You might want to refine your search criteria and try again.`;
+    }
+
+    return { mainSummary, findings, recommendation, bestCall };
+  }, [calls]);
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -228,132 +274,64 @@ export default function SummariesPage() {
           </div>
         )}
 
-        {/* Call Summaries */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="font-inter text-[24px] font-bold tracking-[-0.96px] text-[#513529]">Individual Call Details</h2>
-            <div className="rounded-full border-2 border-[#523429] bg-[#EDD2B0] px-4 py-1">
-              <span className="font-inter text-[14px] font-bold text-[#513529]">
-                {summaries.length} calls
-              </span>
+        {/* Overall Summary */}
+        {overallSummary && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-6 w-6 text-[#523429]" />
+              <h2 className="font-inter text-[24px] font-bold tracking-[-0.96px] text-[#513529]">Here's what I found</h2>
             </div>
-          </div>
 
-          {summaries.map((summary) => (
-            <div key={summary.call.id} className="rounded-[20px] border-2 border-[#523429] bg-white p-6">
-              <div className="space-y-4">
-                {/* Header */}
-                <div className="flex items-start justify-between border-b-2 border-[#523429] pb-4">
-                  <div className="flex-1">
-                    <h3 className="font-inter text-[20px] font-bold text-[#513529] tracking-[-0.8px]">{summary.call.lead.name}</h3>
-                    <p className="mt-1 font-inter text-[14px] text-[#513529]/60">{summary.call.lead.phone}</p>
-                    <p className="mt-1 font-inter text-[14px] text-[#513529]/70">{summary.call.lead.description}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <div className={`${getSentimentColor(summary.call.sentiment)} rounded-full px-3 py-1`}>
-                      <span className="font-inter text-[11px] font-bold uppercase tracking-[0.25em] text-[#513529]">
-                        {summary.call.sentiment}
-                      </span>
-                    </div>
-                    <div className="rounded-full border-2 border-[#523429] bg-[#EDD2B0] px-3 py-1">
-                      <span className="font-inter text-[11px] font-bold uppercase tracking-[0.25em] text-[#513529]">
-                        {summary.call.state}
-                      </span>
-                    </div>
-                    <span className="font-inter text-[12px] text-[#513529]/50">{formatDuration(summary.call.duration)}</span>
-                  </div>
+            <div className="rounded-[20px] border-2 border-[#523429] bg-white p-8 space-y-6">
+              {/* Main Summary */}
+              <div>
+                <p className="font-inter text-[18px] leading-relaxed text-[#513529]">
+                  {overallSummary.mainSummary}
+                </p>
+              </div>
+
+              {/* Findings */}
+              {overallSummary.findings && (
+                <div className="border-t-2 border-[#523429] pt-6">
+                  <h3 className="mb-3 font-inter text-[14px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">What I learned</h3>
+                  <p className="font-inter text-[16px] leading-relaxed text-[#513529]">
+                    {overallSummary.findings}
+                  </p>
                 </div>
+              )}
 
-                {/* Outcome */}
-                <div>
-                  <h4 className="mb-2 font-inter text-[12px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">Outcome</h4>
-                  <p className="font-inter text-[14px] leading-relaxed text-[#513529]">{summary.outcome}</p>
-                </div>
-
-                {/* Key Points */}
-                {summary.keyPoints.length > 0 && (
-                  <div>
-                    <h4 className="mb-2 font-inter text-[12px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">Key Points</h4>
-                    <ul className="space-y-1">
-                      {summary.keyPoints.map((point, index) => (
-                        <li key={index} className="flex items-start gap-2 font-inter text-[14px] text-[#513529]/70">
-                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#523429]" />
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Extracted Data */}
-                {summary.extractedInfo && (summary.extractedInfo.price || summary.extractedInfo.availability) && (
-                  <div>
-                    <h4 className="mb-2 font-inter text-[12px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">Extracted Information</h4>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {summary.extractedInfo.price && (
-                        <div className="rounded-[12px] border-2 border-[#523429] bg-[#EDD2B0]/30 p-3">
-                          <p className="font-inter text-[11px] font-bold uppercase tracking-[0.2em] text-[#513529]/50">Price</p>
-                          <p className="mt-1 font-inter text-[14px] font-bold text-[#513529]">{summary.extractedInfo.price}</p>
-                        </div>
-                      )}
-                      {summary.extractedInfo.availability && (
-                        <div className="rounded-[12px] border-2 border-[#523429] bg-[#EDD2B0]/30 p-3">
-                          <p className="font-inter text-[11px] font-bold uppercase tracking-[0.2em] text-[#513529]/50">Availability</p>
-                          <p className="mt-1 font-inter text-[14px] font-bold text-[#513529]">{summary.extractedInfo.availability}</p>
-                        </div>
-                      )}
-                    </div>
-                    {summary.extractedInfo.notes && (
-                      <p className="mt-2 font-inter text-[12px] text-[#513529]/50">{summary.extractedInfo.notes}</p>
+              {/* Recommendation */}
+              <div className="rounded-[16px] border-2 border-[#523429] bg-[#EDD2B0]/30 p-6">
+                <h3 className="mb-3 font-inter text-[14px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">My recommendation</h3>
+                <p className="font-inter text-[16px] leading-relaxed text-[#513529]">
+                  {overallSummary.recommendation}
+                </p>
+                {overallSummary.bestCall && (
+                  <div className="mt-4 pt-4 border-t border-[#523429]/20">
+                    <p className="font-inter text-[14px] font-bold text-[#513529]">
+                      {overallSummary.bestCall.lead.name}
+                    </p>
+                    <p className="font-inter text-[14px] text-[#513529]/70">
+                      {overallSummary.bestCall.lead.phone}
+                    </p>
+                    {overallSummary.bestCall.lead.address && (
+                      <p className="mt-1 font-inter text-[13px] text-[#513529]/60">
+                        {overallSummary.bestCall.lead.address}
+                      </p>
                     )}
                   </div>
                 )}
-
-                {/* Transcript Preview */}
-                {summary.call.transcript.length > 0 && (
-                  <div>
-                    <h4 className="mb-2 font-inter text-[12px] font-bold uppercase tracking-[0.3em] text-[#513529]/50">Transcript Preview</h4>
-                    <div className="max-h-40 space-y-2 overflow-y-auto rounded-[12px] border-2 border-[#523429] bg-[#EDD2B0]/20 p-3">
-                      {summary.call.transcript.slice(0, 3).map((turn) => (
-                        <div key={turn.id} className="font-inter text-[12px]">
-                          <span className={`font-bold ${turn.speaker === 'ai' ? 'text-[#513529]' : 'text-[#513529]/70'}`}>
-                            {turn.speaker === 'ai' ? 'TARA' : summary.call.lead.name.split(' ')[0]}:{' '}
-                          </span>
-                          <span className="text-[#513529]">{turn.text}</span>
-                        </div>
-                      ))}
-                      {summary.call.transcript.length > 3 && (
-                        <p className="font-inter text-[12px] italic text-[#513529]/50">
-                          ... and {summary.call.transcript.length - 3} more exchanges
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Call Metadata */}
-                <div className="flex items-center gap-4 border-t-2 border-[#523429] pt-4 font-inter text-[12px] text-[#513529]/50">
-                  <span>Rating: {summary.call.lead.rating.toFixed(1)}/5</span>
-                  <span>•</span>
-                  <span>Source: {summary.call.lead.source}</span>
-                  {summary.call.lead.distance != null && (
-                    <>
-                      <span>•</span>
-                      <span>{summary.call.lead.distance.toFixed(1)} mi away</span>
-                    </>
-                  )}
-                </div>
               </div>
             </div>
-          ))}
+          </div>
+        )}
 
-          {summaries.length === 0 && (
-            <div className="rounded-[20px] border-2 border-[#523429] bg-white p-12 text-center">
-              <p className="font-inter text-[16px] text-[#513529]/70">No call summaries available yet.</p>
-              <p className="mt-2 font-inter text-[14px] text-[#513529]/50">Start a call run to see summaries here.</p>
-            </div>
-          )}
-        </div>
+        {!overallSummary && summaries.length === 0 && (
+          <div className="rounded-[20px] border-2 border-[#523429] bg-white p-12 text-center">
+            <p className="font-inter text-[16px] text-[#513529]/70">No call summaries available yet.</p>
+            <p className="mt-2 font-inter text-[14px] text-[#513529]/50">Start a call run to see summaries here.</p>
+          </div>
+        )}
       </main>
     </div>
   );

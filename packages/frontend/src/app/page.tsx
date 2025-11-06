@@ -445,32 +445,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Suggestion prompts */}
-        <div className="w-full flex flex-col items-center gap-6">
-          <h3 className="text-2xl font-medium tracking-[-0.96px] text-[#513529]">
-            Let Tara:
-          </h3>
-
-          <div className="w-full flex flex-col items-center gap-4">
-            {SUGGESTION_PROMPTS.map((prompt, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  setQuery(prompt);
-                  if (userLocation && !isSearching) {
-                    handleSearch(prompt);
-                  }
-                }}
-                disabled={isSearching || isRequestingLocation || !userLocation}
-                className="inline-flex items-center justify-center px-[21px] py-[13px] rounded-[70px] border-2 border-[#513529] bg-[#E8BE8C] hover:bg-[#E8BE8C]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-lg font-medium tracking-[-0.72px] text-black">
-                  {prompt}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

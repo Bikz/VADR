@@ -169,14 +169,6 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
       {!isSmallCard && (
         <div className="h-[calc(100%-85px)] bg-white flex flex-col">
           <div className="flex-1 px-5 py-5 overflow-y-auto">
-            <div className="space-y-1.5">
-              {events.map((event, index) => (
-                <p key={index} className="font-inter text-[14px] font-normal text-[#513529]/60 leading-[150%]">
-                  • {event}
-                </p>
-              ))}
-            </div>
-
             {(call.extractedData || call.lead.address) && (
               <>
                 <div className="border-t border-[#523429]/20 my-5" />
@@ -262,9 +254,6 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
       {isSmallCard && (
         <div className="h-[calc(216px-85px)] bg-white flex flex-col">
           <div className="flex-1 px-5 py-5">
-            <p className="font-inter text-[14px] font-normal text-[#513529]/60 leading-[150%]">
-              • 00:00  Tara called {call.lead.name}
-            </p>
           </div>
           <div className="border-t-2 border-[#523429]" />
           <div className="px-5 py-4 flex items-center justify-center gap-2 flex-wrap">
