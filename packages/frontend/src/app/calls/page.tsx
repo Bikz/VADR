@@ -123,8 +123,8 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
   const failureReason = call.state === 'failed' ? (call as any).failureReason || 'No answer' : null;
 
   return (
-    <div className={`flex-shrink-0 w-[514px] rounded-[39px] border-2 border-[#523429] overflow-hidden`} style={{ height: `${cardHeight}px` }}>
-      <div className="h-[85px] rounded-t-[39px] bg-[#FEE9CF] border-b-2 border-[#523429] px-4 py-4 flex items-center justify-between relative">
+    <div className={`flex-shrink-0 w-full max-w-[540px] mx-auto rounded-[39px] border-2 border-[#523429] overflow-hidden shadow-sm`} style={{ height: `${cardHeight}px` }}>
+      <div className="h-[85px] rounded-t-[39px] bg-[#FEE9CF] border-b-2 border-[#523429] px-5 py-4 flex items-center justify-between relative">
         <div className="flex items-center gap-3">
           <div className="w-[42px] h-[42px] rounded-full border-2 border-[#523429] overflow-hidden bg-[#D4A574] flex items-center justify-center">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -168,10 +168,10 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
 
       {!isSmallCard && (
         <div className="h-[calc(100%-85px)] bg-white flex flex-col">
-          <div className="flex-1 px-4 py-4 overflow-y-auto">
-            <div className="space-y-1">
+          <div className="flex-1 px-5 py-5 overflow-y-auto">
+            <div className="space-y-1.5">
               {events.map((event, index) => (
-                <p key={index} className="font-inter text-[14px] font-normal text-[#513529]/50 leading-[150%]">
+                <p key={index} className="font-inter text-[14px] font-normal text-[#513529]/60 leading-[150%]">
                   • {event}
                 </p>
               ))}
@@ -179,12 +179,12 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
 
             {(call.extractedData || call.lead.address) && (
               <>
-                <div className="border-t border-[#523429] my-4" />
-                <div className="space-y-1.5">
+                <div className="border-t border-[#523429]/20 my-5" />
+                <div className="space-y-2">
                   {call.extractedData?.price && (
                     <div className="flex items-start gap-2">
                       <DollarSign className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      <span className="font-inter text-[14px] font-medium text-[#513529]">
                         Price: {call.extractedData.price}
                       </span>
                     </div>
@@ -192,7 +192,7 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
                   {call.extractedData?.availability && (
                     <div className="flex items-start gap-2">
                       <Clock className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      <span className="font-inter text-[14px] font-medium text-[#513529]">
                         Availability: {call.extractedData.availability}
                       </span>
                     </div>
@@ -200,7 +200,7 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
                   {call.lead.address && (
                     <div className="flex items-start gap-2">
                       <MapPin className="w-[14px] h-[14px] text-[#523429] mt-0.5 flex-shrink-0" />
-                      <span className="font-inter text-[14px] font-medium text-[#523429]">
+                      <span className="font-inter text-[14px] font-medium text-[#513529]">
                         Address: {call.lead.address}
                       </span>
                     </div>
@@ -210,7 +210,7 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
             )}
 
             {call.state === 'failed' && failureReason && (
-              <div className="mt-4 p-3 rounded-lg bg-[#E99E9E]/20 border border-[#E99E9E]">
+              <div className="mt-5 p-3 rounded-lg bg-[#E99E9E]/20 border-2 border-[#E99E9E]">
                 <p className="font-inter text-[12px] font-medium text-[#523429]">
                   Failure reason: {failureReason}
                 </p>
@@ -218,39 +218,39 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
             )}
           </div>
 
-          <div className="border-t-2 border-[#523429] h-[1px]" />
+          <div className="border-t-2 border-[#523429]" />
 
-          <div className="px-4 py-4 flex items-center justify-center gap-3">
+          <div className="px-5 py-4 flex items-center justify-center gap-2 flex-wrap">
             <button
               onClick={() => onViewTranscript(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 View Transcript
               </span>
             </button>
             <button
               onClick={() => onCancelCall(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 Cancel Call
               </span>
             </button>
             <button
               onClick={() => onMarkComplete(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 Mark Complete
               </span>
             </button>
             {(call.state === 'connected' || call.state === 'ringing') && (
               <button
                 onClick={() => onViewTranscript(call.id)}
-                className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#523429] hover:bg-[#523429]/90 text-white transition-colors flex items-center justify-center"
+                className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#523429] hover:bg-[#523429]/90 text-white transition-colors flex items-center justify-center"
               >
-                <span className="font-inter text-[12px] font-bold tracking-[-0.48px]">
+                <span className="font-inter text-[11px] font-bold tracking-[-0.4px]">
                   Take Over
                 </span>
               </button>
@@ -261,33 +261,34 @@ function CallCard({ call, onViewTranscript, onCancelCall, onMarkComplete }: Call
 
       {isSmallCard && (
         <div className="h-[calc(216px-85px)] bg-white flex flex-col">
-          <div className="flex-1 px-4 py-4">
-            <p className="font-inter text-[14px] font-normal text-[#513529]/50 leading-[150%]">
+          <div className="flex-1 px-5 py-5">
+            <p className="font-inter text-[14px] font-normal text-[#513529]/60 leading-[150%]">
               • 00:00  Tara called {call.lead.name}
             </p>
           </div>
-          <div className="px-4 py-4 flex items-center justify-center gap-3">
+          <div className="border-t-2 border-[#523429]" />
+          <div className="px-5 py-4 flex items-center justify-center gap-2 flex-wrap">
             <button
               onClick={() => onViewTranscript(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 View Transcript
               </span>
             </button>
             <button
               onClick={() => onCancelCall(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 Cancel Call
               </span>
             </button>
             <button
               onClick={() => onMarkComplete(call.id)}
-              className="h-[23px] px-2 rounded-md border border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/60 transition-colors flex items-center justify-center"
+              className="px-3 py-1.5 rounded-md border-2 border-[#523429] bg-[#EDD2B0]/40 hover:bg-[#EDD2B0]/70 transition-colors flex items-center justify-center"
             >
-              <span className="font-inter text-[12px] font-bold text-[#513529] tracking-[-0.48px]">
+              <span className="font-inter text-[11px] font-bold text-[#513529] tracking-[-0.4px]">
                 Mark Complete
               </span>
             </button>
@@ -472,10 +473,10 @@ export default function CallsPage() {
 
   return (
     <div className="min-h-screen bg-[#FFF5E5]">
-      <div className="px-14 py-8">
+      <div className="w-full px-8 py-8 mx-auto max-w-[1800px]">
         <button
           onClick={() => router.push('/')}
-          className="mb-16 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          className="mb-12 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
         >
           <div className="relative h-[22px] w-[22px] flex-shrink-0">
             <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -489,7 +490,7 @@ export default function CallsPage() {
           </h1>
         </button>
 
-        <div className="mb-8">
+        <div className="mb-10">
           <p className="font-inter text-[24px] font-medium tracking-[-0.96px] text-[#513529]/50 mb-2">
             ACTIVE QUERY
           </p>
@@ -501,7 +502,7 @@ export default function CallsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-8">
           {calls.map((call) => (
             <CallCard
               key={call.id}

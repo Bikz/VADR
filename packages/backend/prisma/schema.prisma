@@ -65,8 +65,8 @@ model TranscriptTurn {
   speaker   String
   text      String
   timestamp DateTime @default(now())
-  t0Ms      Int?
-  t1Ms      Int?
+  t0Ms      BigInt?
+  t1Ms      BigInt?
 
   createdAt DateTime @default(now())
 

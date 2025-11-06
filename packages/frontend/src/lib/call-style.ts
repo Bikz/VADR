@@ -22,10 +22,10 @@ export function getStateColor(state: CallState): string {
 export function getSentimentColor(sentiment: Sentiment): string {
   switch (sentiment) {
     case 'positive':
-      return 'border border-gray-900 bg-gray-900 text-white';
+      return 'bg-[#82EE71]';
     case 'negative':
-      return 'border border-red-300 bg-red-50 text-red-700';
+      return 'bg-[#E99E9E]';
     default:
-      return 'border border-gray-200 bg-gray-100 text-gray-600';
+      return 'bg-[#E8BB82]';
   }
 }
