@@ -60,7 +60,6 @@ async function searchGooglePlaces(
       body: JSON.stringify({
         textQuery: locationQuery,
         maxResultCount: 20, // Get more results to filter by distance
-        includedType: 'establishment',
         languageCode: 'en',
         locationBias: {
           circle: {
